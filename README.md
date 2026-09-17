@@ -340,11 +340,18 @@ entirely on `.syx` files captured to disk with `tempest_save_received_dump`.
 > **Beat dump alternative:** The Tempest supports exporting a single beat via
 > **Save/Load → Export Beat in RAM over MIDI → Next → USB → Export Now**. This
 > produces a smaller SysEx message than a full project dump (~1/16 the size),
-> which makes diffs faster to read. The message type byte for this command is
-> **not yet known** — determine it by capturing one beat dump and checking
-> `raw[3]` (the byte after `F0 01 28`). Once known, add it as `TypeBeatDump`
-> in `internal/sysex/message.go` and extend `beat-mapper unescape` to handle
-> it.
+> which makes diffs faster to read. The message type byte for this command
+> was not previously known; a third-party editor's source (see
+> [docs/sysex-tempest-format.md](docs/sysex-tempest-format.md#1-message-types))
+> strongly suggests it is **`0x5F`** (the type byte that editor's own
+> "export as .syx" feature writes for a single beat — the other candidate,
+> `0x62`, looks like that editor's own save-file wrapper format rather than
+> the hardware wire format) — **still unconfirmed against real hardware.**
+> Determine it for certain by capturing one beat dump and
+> checking `raw[3]` (the byte after `F0 01 28`). Once confirmed, add it as
+> `TypeBeatDump` in `internal/sysex/message.go` and extend `beat-mapper
+> unescape` to handle it — also see that doc's §5 for a candidate
+> `BeatDataOffset` (1012) to seed the search.
 
 ### Build
 
@@ -630,6 +637,23 @@ Factory sounds use `/S/Category/Name` prefixes (e.g. `/S/Kicks/Basic`).
 
 Format details were reverse-engineered from KnobKraft Orm (Christof Ruch,
 2022).
+
+> **Update:** a second, independent reverse-engineering source —
+> [TempestEdit](https://www.bitrotten.com/tempest/editor/) (an unofficial
+> browser-based Tempest editor) and a companion
+> [SysEx bit map](https://gist.github.com/fadeddata/c39a3b4b10e1e51af58e49ef74aca116) —
+> describes the container format differently in several important ways:
+> a leading "collector" byte carrying MSBs (not a discardable mystery byte),
+> two additional message types (`0x5F` for a standalone Beat export and
+> `0x62` for a Beat "file" variant), a bit-packed (not null-terminated) name
+> field in RAM sound bodies, and concrete offsets for a Beat/Kit container
+> (BPM, swing, name, 32-entry pad table, sequencer region). None of this has
+> been verified against this repo's own hardware captures yet. Full details,
+> the complete parameter bit map, and specific discrepancies with the
+> encoding in `internal/sysex/` are in
+> **[docs/sysex-tempest-format.md](docs/sysex-tempest-format.md)** — read it
+> before touching `internal/sysex/encoding.go` or resuming the beat-mapper
+> research below.
 
 ---
 
