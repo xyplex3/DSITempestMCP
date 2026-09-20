@@ -1,102 +1,93 @@
-// Package sysex implements the two SysEx encoding schemes used by the DSI Tempest,
-// plus message-type detection and payload parsing.
+// Package sysex implements the Tempest's SysEx wire encoding, plus
+// message-type detection and payload parsing.
 //
-// Two schemes:
-//   - Tempest 7+1: used for 0x60 (RAM), 0x61 (Project), 0x63 (FLASH)
-//     Groups of 8: 7 data bytes + 1 mystery byte (purpose unknown, written as 0x00).
-//   - Standard DSI 7-of-8: used for 0x5C (bank sound), 0x5E (bank header)
-//     Groups of 8: 7 data bytes (high bit cleared) + 1 MSB byte encoding the high bits.
+// One scheme, used by every recognised Tempest message type (0x60 RAM,
+// 0x61 Project, 0x63 FLASH, 0x5C alternate sound, 0x5E alternate header,
+// 0x5F Beat/Kit): groups of 8 wire bytes containing 1 leading "collector"
+// byte followed by 7 data bytes. Bit k of the collector byte is the high
+// bit (bit 7) of data byte k in that group.
 //
-// Source: reverse-engineered from KnobKraft Orm DSI_Tempest.py (Christof Ruch, 2022).
+// This replaces an earlier, unverified pair of schemes (a "7 data + 1
+// discarded mystery byte" model for 0x60/0x61/0x63, and a "7 data + trailing
+// MSB byte" model for 0x5C/0x5E) that turned out not to match real hardware.
+//
+// Source: reverse-engineered from TempestEdit (bitrotten.com/tempest/editor),
+// an unofficial browser-based Tempest editor, by static analysis of its
+// unpackPayload/packPayload routines. Confirmed against this project's own
+// hardware-captured .syx files: decoding real FLASH (0x63) dumps with this
+// scheme recovers exact, byte-perfect "/S/Category/Name" paths, and decoding
+// real Beat/Kit (0x5F) dumps recovers exact names and BPM values matching
+// their known contents. See docs/sysex-tempest-format.md §3 for details.
 package sysex
 
-// Unescape7Plus1 decodes the Tempest-specific 7+1 scheme (for 0x60/0x61/0x63).
-// Read 7 bytes, skip 1 mystery byte, repeat.
-func Unescape7Plus1(encoded []byte) []byte {
+// unpackCollectorFirst decodes the Tempest wire scheme: each group of 8
+// encoded bytes is 1 collector byte followed by 7 data bytes. Bit k (0-6) of
+// the collector is OR'd into bit 7 of data byte k.
+func unpackCollectorFirst(encoded []byte) []byte {
 	result := make([]byte, 0, len(encoded)*7/8)
 	i := 0
 	for i < len(encoded) {
-		for j := 0; j < 7; j++ {
-			if i < len(encoded) {
-				result = append(result, encoded[i])
-			}
-			i++
-		}
-		i++ // skip mystery 8th byte
-	}
-	return result
-}
-
-// Escape7Plus1 encodes data using the Tempest 7+1 scheme.
-// The mystery 8th byte is written as 0x00 (Tempest accepts this).
-func Escape7Plus1(data []byte) []byte {
-	groups := (len(data) + 6) / 7
-	result := make([]byte, 0, groups*8)
-	for i := 0; i < len(data); i += 7 {
-		end := i + 7
-		if end > len(data) {
-			end = len(data)
-		}
-		chunk := data[i:end]
-		result = append(result, chunk...)
-		// Pad to 7 bytes if last chunk is short
-		for j := len(chunk); j < 7; j++ {
-			result = append(result, 0x00)
-		}
-		result = append(result, 0x00) // mystery byte
-	}
-	return result
-}
-
-// UnescapeStandard decodes the standard DSI 7-of-8 MSB scheme (for 0x5C/0x5E).
-// Groups of 8: 7 data bytes (high bit cleared) + 1 MSB byte.
-// Bit (6-i) of the MSB byte is the high bit of data byte i.
-func UnescapeStandard(encoded []byte) []byte {
-	result := make([]byte, 0, len(encoded)*7/8)
-	i := 0
-	for i+7 < len(encoded) {
-		msbByte := encoded[i+7]
-		for j := 0; j < 7; j++ {
-			b := encoded[i+j]
-			msb := (msbByte >> uint(6-j)) & 0x01
-			result = append(result, b|(msb<<7))
+		collector := encoded[i]
+		for k := 0; k < 7 && i+1+k < len(encoded); k++ {
+			result = append(result, encoded[i+1+k]|(((collector>>uint(k))&0x01)<<7))
 		}
 		i += 8
 	}
-	// Handle any remaining bytes without a full MSB group
-	if i < len(encoded) {
-		result = append(result, encoded[i:]...)
+	return result
+}
+
+// packCollectorFirst encodes data using the Tempest wire scheme: every 7
+// input bytes become 1 collector byte (carrying each byte's high bit) plus
+// the 7 bytes with their high bit cleared. A short final chunk is zero-padded
+// to 7 bytes.
+func packCollectorFirst(data []byte) []byte {
+	groups := (len(data) + 6) / 7
+	result := make([]byte, 0, groups*8)
+	for i := 0; i < len(data); i += 7 {
+		end := min(i+7, len(data))
+		chunk := data[i:end]
+
+		var collector byte
+		for k, b := range chunk {
+			collector |= ((b >> 7) & 0x01) << uint(k)
+		}
+		result = append(result, collector)
+
+		for k := range 7 {
+			if k < len(chunk) {
+				result = append(result, chunk[k]&0x7F)
+			} else {
+				result = append(result, 0x00)
+			}
+		}
 	}
 	return result
 }
 
-// EscapeStandard encodes data using the standard DSI 7-of-8 MSB scheme.
+// Unescape7Plus1 decodes the Tempest wire scheme (see unpackCollectorFirst),
+// used for 0x60 (RAM), 0x61 (Project), 0x63 (FLASH), and 0x5F (Beat/Kit).
+func Unescape7Plus1(encoded []byte) []byte {
+	return unpackCollectorFirst(encoded)
+}
+
+// Escape7Plus1 encodes data using the Tempest wire scheme (see
+// packCollectorFirst).
+func Escape7Plus1(data []byte) []byte {
+	return packCollectorFirst(data)
+}
+
+// UnescapeStandard decodes 0x5C (alternate bank sound) and 0x5E (alternate
+// bank header) payloads. TempestEdit's source uses a single unpack routine
+// for every message type (see package doc) rather than a distinct scheme for
+// these two — unlike Unescape7Plus1's callers, this has not been
+// independently confirmed against a decoded 0x5C/0x5E hardware capture in
+// this repo (only the FLASH/RAM/Beat family has been); revisit if evidence
+// to the contrary turns up.
+func UnescapeStandard(encoded []byte) []byte {
+	return unpackCollectorFirst(encoded)
+}
+
+// EscapeStandard encodes data for 0x5C/0x5E messages. See UnescapeStandard.
 func EscapeStandard(data []byte) []byte {
-	groups := (len(data) + 6) / 7
-	result := make([]byte, 0, groups*8)
-	for i := 0; i < len(data); i += 7 {
-		end := i + 7
-		if end > len(data) {
-			end = len(data)
-		}
-		chunk := data[i:end]
-
-		var msbByte byte
-		for j, b := range chunk {
-			if b&0x80 != 0 {
-				msbByte |= 1 << uint(6-j)
-			}
-		}
-
-		// Write 7 data bytes with high bit cleared
-		for _, b := range chunk {
-			result = append(result, b&0x7F)
-		}
-		// Pad to 7 if short chunk
-		for j := len(chunk); j < 7; j++ {
-			result = append(result, 0x00)
-		}
-		result = append(result, msbByte)
-	}
-	return result
+	return packCollectorFirst(data)
 }

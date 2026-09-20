@@ -63,6 +63,11 @@ func TestIdentify(t *testing.T) {
 			want: sysex.TypeAlternateBank,
 		},
 		{
+			name: "Beat/Kit dump (0x5F)",
+			raw:  []byte{0xF0, 0x01, 0x28, 0x5F, 0x00},
+			want: sysex.TypeBeatDump,
+		},
+		{
 			name: "unknown type byte",
 			raw:  []byte{0xF0, 0x01, 0x28, 0x01, 0x00},
 			want: sysex.TypeUnknown,
@@ -145,7 +150,8 @@ func TestBankSlot(t *testing.T) {
 	}
 }
 
-// TestPayload verifies that Payload returns the correct slice.
+// TestPayload verifies that Payload returns the correct slice, using the
+// type-dependent header length (4 bytes for most types, 5 for FLASH/0x5C).
 func TestPayload(t *testing.T) {
 	tests := []struct {
 		name string
@@ -154,18 +160,24 @@ func TestPayload(t *testing.T) {
 	}{
 		{
 			name: "too short returns nil",
-			raw:  []byte{0xF0, 0x01, 0x28, 0x63, 0x00, 0x00},
+			raw:  []byte{0xF0, 0x01, 0x28, 0x63, 0x00},
 			want: nil,
 		},
 		{
-			// Minimum valid: raw[6:len-1] = raw[6:7] = one byte.
-			name: "minimal 8-byte message",
-			raw:  []byte{0xF0, 0x01, 0x28, 0x63, 0x00, 0x00, 0xAA, 0xF7},
+			// FLASH (0x63): 5-byte header, so payload starts at index 5.
+			name: "FLASH minimal message",
+			raw:  []byte{0xF0, 0x01, 0x28, 0x63, 0x00, 0xAA, 0xF7},
 			want: []byte{0xAA},
 		},
 		{
-			name: "three payload bytes",
-			raw:  []byte{0xF0, 0x01, 0x28, 0x63, 0x00, 0x00, 0x01, 0x02, 0x03, 0xF7},
+			// RAM (0x60): 4-byte header, so payload starts at index 4.
+			name: "RAM minimal message",
+			raw:  []byte{0xF0, 0x01, 0x28, 0x60, 0xAA, 0xF7},
+			want: []byte{0xAA},
+		},
+		{
+			name: "FLASH three payload bytes",
+			raw:  []byte{0xF0, 0x01, 0x28, 0x63, 0x00, 0x01, 0x02, 0x03, 0xF7},
 			want: []byte{0x01, 0x02, 0x03},
 		},
 	}
@@ -192,25 +204,18 @@ func TestPayload(t *testing.T) {
 	}
 }
 
-// TestUnescape verifies Unescape dispatches the correct decoding scheme.
+// TestUnescape verifies Unescape reads the type-dependent header length and
+// applies the (now-uniform) collector-first decoding scheme.
 func TestUnescape(t *testing.T) {
-	// FLASH message (7+1 scheme).
-	// Payload is Escape7Plus1([0x41..0x47]).
-	flashMsg := []byte{
-		0xF0, 0x01, 0x28, 0x63, 0x00, 0x00,
-		0x41, 0x42, 0x43, 0x44, 0x45, 0x46, 0x47, 0x00, // 7 bytes + mystery
-		0xF7,
-	}
+	// FLASH message: 5-byte header, payload = Escape7Plus1([0x41..0x47]).
+	flashMsg := append([]byte{0xF0, 0x01, 0x28, 0x63, 0x00}, sysex.Escape7Plus1([]byte{0x41, 0x42, 0x43, 0x44, 0x45, 0x46, 0x47})...)
+	flashMsg = append(flashMsg, 0xF7)
 
-	// Alternate message (standard 7-of-8 scheme).
-	// Payload is EscapeStandard([0x01..0x07]) = 7 low bytes + MSB 0x00.
-	altMsg := []byte{
-		0xF0, 0x01, 0x28, 0x5C, 0x00, 0x00,
-		0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x00, // 7 bytes + MSB
-		0xF7,
-	}
+	// Alternate message: 5-byte header, payload = EscapeStandard([0x01..0x07]).
+	altMsg := append([]byte{0xF0, 0x01, 0x28, 0x5C, 0x00}, sysex.EscapeStandard([]byte{0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07})...)
+	altMsg = append(altMsg, 0xF7)
 
-	t.Run("FLASH uses 7+1 scheme", func(t *testing.T) {
+	t.Run("FLASH decodes correctly", func(t *testing.T) {
 		got := sysex.Unescape(flashMsg)
 		want := []byte{0x41, 0x42, 0x43, 0x44, 0x45, 0x46, 0x47}
 		if len(got) != len(want) {
@@ -223,7 +228,7 @@ func TestUnescape(t *testing.T) {
 		}
 	})
 
-	t.Run("Alternate uses standard 7-of-8 scheme", func(t *testing.T) {
+	t.Run("Alternate decodes correctly", func(t *testing.T) {
 		got := sysex.Unescape(altMsg)
 		want := []byte{0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07}
 		if len(got) != len(want) {
@@ -341,10 +346,12 @@ func TestExtractParams(t *testing.T) {
 	}
 }
 
-// TestBuildFLASHDump verifies the SysEx envelope built by BuildFLASHDump.
+// TestBuildFLASHDump verifies the SysEx envelope built by BuildFLASHDump
+// matches the confirmed real-hardware format: 5-byte header (F0 mfg dev
+// 0x63 pathLen), pathLen = len(name)+1 for the terminator.
 func TestBuildFLASHDump(t *testing.T) {
 	params := []byte{0x24, 0x19, 0x00, 0x10, 0x49}
-	raw := sysex.BuildFLASHDump("TestSound", params, 5)
+	raw := sysex.BuildFLASHDump("TestSound", params)
 
 	if raw[0] != 0xF0 {
 		t.Errorf("byte[0] = 0x%02X, want 0xF0", raw[0])
@@ -358,8 +365,9 @@ func TestBuildFLASHDump(t *testing.T) {
 	if raw[3] != sysex.TypeFLASH {
 		t.Errorf("byte[3] = 0x%02X, want TypeFLASH", raw[3])
 	}
-	if raw[4] != 5 {
-		t.Errorf("location = %d, want 5", raw[4])
+	wantPathLen := len("TestSound") + 1 // +1 for the null terminator
+	if raw[4] != byte(wantPathLen) {
+		t.Errorf("pathLen = %d, want %d", raw[4], wantPathLen)
 	}
 	if raw[len(raw)-1] != 0xF7 {
 		t.Errorf("last byte = 0x%02X, want 0xF7", raw[len(raw)-1])
@@ -377,23 +385,32 @@ func TestBuildFLASHDump(t *testing.T) {
 }
 
 // TestRenameFLASH verifies that RenameFLASH updates the name without
-// changing params or location.
+// changing params.
 func TestRenameFLASH(t *testing.T) {
 	params := []byte{0x01, 0x02, 0x03, 0x04}
-	original := sysex.BuildFLASHDump("OldName", params, 7)
+	original := sysex.BuildFLASHDump("OldName", params)
 
 	t.Run("renames FLASH sound", func(t *testing.T) {
 		renamed, err := sysex.RenameFLASH(original, "NewName")
 		if err != nil {
 			t.Fatalf("RenameFLASH() error = %v", err)
 		}
-		if sysex.Location(renamed) != 7 {
-			t.Errorf("location = %d, want 7", sysex.Location(renamed))
-		}
 		unescaped := sysex.Unescape(renamed)
 		name, _ := sysex.ExtractName(unescaped, sysex.TypeFLASHSound)
 		if name != "NewName" {
 			t.Errorf("new name = %q, want %q", name, "NewName")
+		}
+		// The wire scheme packs in fixed groups of 7; when name+params isn't
+		// a multiple of 7 the final group is zero-padded, so gotParams may
+		// have trailing zero bytes beyond len(params). Check the real prefix.
+		gotParams := sysex.ExtractParams(unescaped, sysex.TypeFLASHSound)
+		if len(gotParams) < len(params) {
+			t.Fatalf("params length = %d, want at least %d", len(gotParams), len(params))
+		}
+		for i := range params {
+			if gotParams[i] != params[i] {
+				t.Errorf("params[%d] = 0x%02X, want 0x%02X", i, gotParams[i], params[i])
+			}
 		}
 	})
 
@@ -415,7 +432,7 @@ func TestFingerprint(t *testing.T) {
 	params := []byte{0x01, 0x02, 0x03, 0x04, 0x05}
 
 	t.Run("FLASH sound returns 32-char hex MD5", func(t *testing.T) {
-		raw := sysex.BuildFLASHDump("Sound", params, 0)
+		raw := sysex.BuildFLASHDump("Sound", params)
 		fp, err := sysex.Fingerprint(raw)
 		if err != nil {
 			t.Fatalf("Fingerprint() error = %v", err)
@@ -426,11 +443,11 @@ func TestFingerprint(t *testing.T) {
 	})
 
 	t.Run("same params different names produce same fingerprint", func(t *testing.T) {
-		fp1, err := sysex.Fingerprint(sysex.BuildFLASHDump("NameA", params, 0))
+		fp1, err := sysex.Fingerprint(sysex.BuildFLASHDump("NameA", params))
 		if err != nil {
 			t.Fatalf("Fingerprint(NameA) error = %v", err)
 		}
-		fp2, err := sysex.Fingerprint(sysex.BuildFLASHDump("NameB", params, 15))
+		fp2, err := sysex.Fingerprint(sysex.BuildFLASHDump("NameB", params))
 		if err != nil {
 			t.Fatalf("Fingerprint(NameB) error = %v", err)
 		}
@@ -440,16 +457,16 @@ func TestFingerprint(t *testing.T) {
 	})
 
 	t.Run("different params produce different fingerprints", func(t *testing.T) {
-		fp1, _ := sysex.Fingerprint(sysex.BuildFLASHDump("S", params, 0))
-		fp2, _ := sysex.Fingerprint(sysex.BuildFLASHDump("S", []byte{0xFF, 0xFE}, 0))
+		fp1, _ := sysex.Fingerprint(sysex.BuildFLASHDump("S", params))
+		fp2, _ := sysex.Fingerprint(sysex.BuildFLASHDump("S", []byte{0xFF, 0xFE}))
 		if fp1 == fp2 {
 			t.Error("expected different fingerprints for different params")
 		}
 	})
 
 	t.Run("valid RAM sound returns fingerprint", func(t *testing.T) {
-		// Minimum RAM: F0 01 28 60 loc 0xAA 0xBB 0xF7 (len=8 >= 7)
-		ram := []byte{0xF0, sysex.ManufacturerID, sysex.DeviceID, 0x60, 0x00,
+		// F0 01 28 60 <payload bytes> F7 — headerLen(RAM)=4, so 2 payload bytes.
+		ram := []byte{0xF0, sysex.ManufacturerID, sysex.DeviceID, 0x60,
 			0xAA, 0xBB, 0xF7}
 		fp, err := sysex.Fingerprint(ram)
 		if err != nil {
@@ -461,8 +478,9 @@ func TestFingerprint(t *testing.T) {
 	})
 
 	t.Run("RAM dump too short returns error", func(t *testing.T) {
-		// 6 bytes: valid Tempest header but len < 7 for RAM case.
-		ram := []byte{0xF0, sysex.ManufacturerID, sysex.DeviceID, 0x60, 0x00, 0xF7}
+		// 5 bytes: valid Tempest header but no payload bytes (headerLen(RAM)=4
+		// leaves nothing before F7).
+		ram := []byte{0xF0, sysex.ManufacturerID, sysex.DeviceID, 0x60, 0xF7}
 		_, err := sysex.Fingerprint(ram)
 		if err == nil {
 			t.Fatal("expected error for short RAM dump, got nil")
@@ -497,7 +515,7 @@ func TestFingerprint(t *testing.T) {
 // ExtractParams — to account for 7+1 encoding round-trip padding.
 func TestFingerprint_md5(t *testing.T) {
 	params := []byte{0x24, 0x19, 0x00, 0x10, 0x49, 0x06, 0x00, 0x04}
-	raw := sysex.BuildFLASHDump("MD5Test", params, 0)
+	raw := sysex.BuildFLASHDump("MD5Test", params)
 
 	fp, err := sysex.Fingerprint(raw)
 	if err != nil {
@@ -522,7 +540,7 @@ func TestFingerprint_md5(t *testing.T) {
 // TestExtractSoundsFromProject verifies project-dump sound extraction.
 func TestExtractSoundsFromProject(t *testing.T) {
 	t.Run("non-project dump returns error", func(t *testing.T) {
-		flash := sysex.BuildFLASHDump("S", []byte{0x01, 0x02}, 0)
+		flash := sysex.BuildFLASHDump("S", []byte{0x01, 0x02})
 		_, err := sysex.ExtractSoundsFromProject(flash, 70, "")
 		if err == nil {
 			t.Fatal("expected error for non-project input, got nil")

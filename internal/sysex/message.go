@@ -4,6 +4,7 @@ import (
 	"crypto/md5"
 	"fmt"
 	"sort"
+	"strings"
 )
 
 // Tempest SysEx constants.
@@ -16,10 +17,12 @@ const (
 	TypeFLASH     = 0x63 // Permanent FLASH sound (Bank A/B)
 	TypeAltSound  = 0x5C // Alternate bank sound (standard DSI encoding)
 	TypeAltHeader = 0x5E // Alternate bank global header
-	// TypeBeat byte is unknown — the Tempest exposes "Export Beat in RAM over MIDI"
-	// since OS 1.1 but DSI never published the byte value. Determine via capture:
-	// intercept the SysEx produced by Save/Load → Export Beat in RAM over MIDI.
-	// A single-beat dump is much smaller than a project dump and easier to diff.
+	// TypeBeat is a single Beat/Kit export ("Export Beat in RAM over MIDI",
+	// available since OS 1.1). Confirmed 2026-09-19 by decoding this
+	// project's own hardware-captured .syx files: real 0x5F messages decode
+	// (via the Kit layout below) to exact, byte-perfect names and BPM values
+	// matching their known contents. See docs/sysex-tempest-format.md §5.
+	TypeBeat = 0x5F
 
 	// Sound parameter block sizes (unescaped).
 	ParamBlockSizeFLASH = 132 // approximate; 0x63 format
@@ -28,6 +31,22 @@ const (
 	// Number of sounds per 0x5C bank message and per bank (A or B).
 	SoundsPerBank    = 16
 	AltBankHeaderOff = 40 // approximate byte offset where sounds begin in 0x5C
+
+	// Beat/Kit (0x5F) container layout — offsets into the unescaped payload.
+	// Confirmed against real hardware-captured .syx files (see
+	// docs/sysex-tempest-format.md §5); step/track sequencer offsets past
+	// KitSequencerOffset remain unknown and still need a beat-mapper capture
+	// session.
+	KitBPMOffset       = 4  // 2 bytes, big-endian; BPM = raw/10
+	KitSwingOffset     = 6  // 1 byte, raw 0-12 -> 50%-75% swing, linear
+	KitNameOffset      = 24 // 20 bytes, space-padded ASCII (not null-terminated)
+	KitNameLen         = 20
+	KitShortNameOffset = 44 // 8 bytes, space-padded ASCII
+	KitShortNameLen    = 8
+	KitPadTableOffset  = 52
+	KitPadEntryLen     = 30
+	KitPadEntryCount   = 32
+	KitSequencerOffset = KitPadTableOffset + KitPadEntryLen*KitPadEntryCount // 1012
 )
 
 // MessageType classifies a raw SysEx byte slice by its Tempest message type.
@@ -43,11 +62,9 @@ const (
 	TypeAlternateSound MessageType = TypeAltSound  // 0x5C alternate bank sound
 	TypeAlternateBank  MessageType = TypeAltHeader // 0x5E alternate bank global header
 
-	// TypeBeatDump is the message type for a single beat export
-	// ("Export Beat in RAM over MIDI", available since OS 1.1).
-	// The actual command byte is not published; it must be captured from hardware
-	// by intercepting the SysEx produced by Save/Load → Export Beat in RAM over MIDI.
-	TypeBeatDump MessageType = -1 // TBD — determine via hardware capture
+	// TypeBeatDump is a single Beat/Kit export. See the TypeBeat constant
+	// above for confirmation details.
+	TypeBeatDump MessageType = TypeBeat
 )
 
 // SplitMessages splits a raw byte slice into individual SysEx messages,
@@ -90,11 +107,38 @@ func Identify(raw []byte) MessageType {
 		return TypeAlternateSound
 	case TypeAltHeader:
 		return TypeAlternateBank
+	case TypeBeat:
+		return TypeBeatDump
 	}
 	return TypeUnknown
 }
 
-// Location returns byte [4] of the message (bank slot 0–31).
+// headerLen returns the number of leading bytes — F0, manufacturer, device,
+// type, and (for some types) one extra byte — before the escaped payload
+// begins. FLASH (0x63) and alternate-bank sound (0x5C) carry that extra byte;
+// for FLASH it is a name/path-length prefix (see BuildFLASHDump), confirmed
+// by decoding real hardware captures. Every other recognised type has a
+// plain 4-byte header. Source: TempestEdit's headerLen()
+// (docs/sysex-tempest-format.md §2).
+func headerLen(t MessageType) int {
+	switch t {
+	case TypeFLASHSound, TypeAlternateSound:
+		return 5
+	default:
+		return 4
+	}
+}
+
+// Location returns byte [4] of the message.
+//
+// For 0x5C (alternate bank sound) this is a genuine 0-indexed bank slot —
+// confirmed against a real 16-sound bank capture, where 16 consecutive 0x5C
+// messages carry byte[4] = 0x00..0x0F in order.
+//
+// For FLASH (0x63) this byte is NOT a slot: it is a name/path-length prefix
+// (see headerLen and BuildFLASHDump), confirmed by decoding real FLASH
+// captures' embedded "/S/Category/Name" paths. Callers must not treat it as
+// a bank/slot for FLASH messages — see BankSlot.
 func Location(raw []byte) uint8 {
 	if len(raw) < 5 {
 		return 0
@@ -102,7 +146,9 @@ func Location(raw []byte) uint8 {
 	return raw[4]
 }
 
-// BankSlot returns the friendly bank name (A/B) and 1-indexed slot for a location byte.
+// BankSlot returns the friendly bank name (A/B) and 1-indexed slot for a
+// location byte. Only meaningful for 0x5C (alternate bank sound) messages —
+// see Location.
 func BankSlot(loc uint8) (bank string, slot int) {
 	if loc < 16 {
 		return "A", int(loc) + 1
@@ -110,12 +156,14 @@ func BankSlot(loc uint8) (bank string, slot int) {
 	return "B", int(loc-16) + 1
 }
 
-// Payload returns the escaped payload bytes [6 : len-1].
+// Payload returns the escaped payload bytes, i.e. everything between the
+// type-dependent header (see headerLen) and the trailing F7.
 func Payload(raw []byte) []byte {
-	if len(raw) < 8 {
+	hl := headerLen(Identify(raw))
+	if len(raw) < hl+2 {
 		return nil
 	}
-	return raw[6 : len(raw)-1]
+	return raw[hl : len(raw)-1]
 }
 
 // Unescape decodes the payload of a message using the appropriate scheme.
@@ -130,11 +178,18 @@ func Unescape(raw []byte) []byte {
 	}
 }
 
-// ExtractName reads the null-terminated ASCII name from the start of an
-// unescaped payload block. Returns ("", 0) for RAM sounds (no name field).
+// ExtractName reads the sound/beat name from an unescaped payload block.
+// Returns ("", 0) for RAM sounds (bit-packed name field location unconfirmed
+// — see docs/sysex-tempest-format.md §4). For Beat/Kit dumps, reads the
+// fixed-offset space-padded name field (see KitNameOffset). Everything else
+// (FLASH, Project) reads a null-terminated ASCII run from the start of the
+// block.
 func ExtractName(unescaped []byte, msgType MessageType) (name string, nameEndIdx int) {
-	if msgType == TypeRAMSound {
+	switch msgType {
+	case TypeRAMSound:
 		return "", 0
+	case TypeBeatDump:
+		return extractKitName(unescaped), KitNameOffset + KitNameLen
 	}
 	for i, b := range unescaped {
 		if b == 0 {
@@ -143,6 +198,33 @@ func ExtractName(unescaped []byte, msgType MessageType) (name string, nameEndIdx
 	}
 	// No null terminator found — treat entire block as name
 	return string(unescaped), len(unescaped)
+}
+
+// extractKitName reads the fixed-offset, space-padded 20-char name field of
+// a Beat/Kit (0x5F) unescaped payload. Confirmed against real hardware
+// captures — see the TypeBeat constant doc comment.
+func extractKitName(unescaped []byte) string {
+	if len(unescaped) < KitNameOffset+KitNameLen {
+		return ""
+	}
+	return strings.TrimRight(string(unescaped[KitNameOffset:KitNameOffset+KitNameLen]), " \x00")
+}
+
+// KitBPM decodes the BPM field of an unescaped Beat/Kit (0x5F) payload.
+func KitBPM(unescaped []byte) float64 {
+	if len(unescaped) < KitBPMOffset+2 {
+		return 0
+	}
+	raw := int(unescaped[KitBPMOffset])*256 + int(unescaped[KitBPMOffset+1])
+	return float64(raw) / 10
+}
+
+// KitSwing decodes the swing field (50%-75%) of an unescaped Beat/Kit payload.
+func KitSwing(unescaped []byte) float64 {
+	if len(unescaped) <= KitSwingOffset {
+		return 50
+	}
+	return 50 + float64(unescaped[KitSwingOffset])*(75-50)/12
 }
 
 // ExtractParams returns the parameter block from an unescaped payload.
@@ -171,11 +253,12 @@ func Fingerprint(raw []byte) (string, error) {
 
 	switch t {
 	case TypeRAMSound:
-		// No name — hash payload bytes [5:-1] directly
-		if len(raw) < 7 {
+		// No confirmed name field — hash the escaped payload directly.
+		p := Payload(raw)
+		if p == nil {
 			return "", fmt.Errorf("RAM dump too short")
 		}
-		hashInput = raw[5 : len(raw)-1]
+		hashInput = p
 
 	case TypeAlternateSound:
 		// Hash entire unescaped data
@@ -194,16 +277,25 @@ func Fingerprint(raw []byte) (string, error) {
 	return fmt.Sprintf("%x", sum), nil
 }
 
-// BuildFLASHDump constructs a complete FLASH sound dump (0x63) from
-// a sound name and its parameter bytes. location is 0–31.
-func BuildFLASHDump(soundName string, params []byte, location uint8) []byte {
+// BuildFLASHDump constructs a complete FLASH sound dump (0x63) from a sound
+// name/path and its parameter bytes, matching the format confirmed by
+// decoding real hardware captures: a 5-byte header (F0 mfg dev 0x63
+// pathLen) followed by the escaped [name+0x00 terminator, params] payload.
+// pathLen (byte [4]) is the length of the name including its terminator, not
+// a bank/slot — the Tempest does not appear to encode a destination slot in
+// this message at all; slot assignment happens via the front-panel Save/Load
+// prompt when the dump is received. See docs/sysex-tempest-format.md §2.
+func BuildFLASHDump(soundName string, params []byte) []byte {
 	nameBytes := []byte(soundName)
-	nameBytes = append(nameBytes, 0x00) // null terminator
-	nameBytes = append(nameBytes, params...)
-	escaped := Escape7Plus1(nameBytes)
+	nameBytes = append(nameBytes, 0x00) // terminator, counted in pathLen
+	pathLen := len(nameBytes)
+	payload := make([]byte, 0, len(nameBytes)+len(params))
+	payload = append(payload, nameBytes...)
+	payload = append(payload, params...)
+	escaped := Escape7Plus1(payload)
 
-	msg := make([]byte, 0, 6+len(escaped)+1)
-	msg = append(msg, 0xF0, ManufacturerID, DeviceID, TypeFLASH, location, 0x00)
+	msg := make([]byte, 0, 5+len(escaped)+1)
+	msg = append(msg, 0xF0, ManufacturerID, DeviceID, TypeFLASH, byte(pathLen))
 	msg = append(msg, escaped...)
 	msg = append(msg, 0xF7)
 	return msg
@@ -216,7 +308,7 @@ func RenameFLASH(raw []byte, newName string) ([]byte, error) {
 	}
 	unescaped := Unescape7Plus1(Payload(raw))
 	params := ExtractParams(unescaped, TypeFLASHSound)
-	return BuildFLASHDump(newName, params, Location(raw)), nil
+	return BuildFLASHDump(newName, params), nil
 }
 
 // referenceSignature is the known 16-byte pattern at the start of a
@@ -288,7 +380,7 @@ func ExtractSoundsFromProject(raw []byte, minQuality int, namePrefix string) ([]
 	var results [][]byte
 	for i, c := range unique {
 		name := fmt.Sprintf("%s %d", namePrefix, i+1)
-		dump := BuildFLASHDump(name, c.params, uint8(i%256))
+		dump := BuildFLASHDump(name, c.params)
 		results = append(results, dump)
 	}
 	return results, nil

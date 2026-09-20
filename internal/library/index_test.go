@@ -158,7 +158,7 @@ func TestScan(t *testing.T) {
 
 	t.Run("single FLASH sound file is indexed", func(t *testing.T) {
 		dir := t.TempDir()
-		msg := sysex.BuildFLASHDump("TestKick", make([]byte, sysex.ParamBlockSizeFLASH), 0)
+		msg := sysex.BuildFLASHDump("TestKick", make([]byte, sysex.ParamBlockSizeFLASH))
 		path := filepath.Join(dir, "kick.syx")
 		mustWriteFile(t, path, msg)
 		idx, err := library.Scan(dir)
@@ -191,7 +191,7 @@ func TestScan(t *testing.T) {
 
 	t.Run("subdirectory name becomes folder tag", func(t *testing.T) {
 		dir := t.TempDir()
-		msg := sysex.BuildFLASHDump("SubKick", make([]byte, sysex.ParamBlockSizeFLASH), 0)
+		msg := sysex.BuildFLASHDump("SubKick", make([]byte, sysex.ParamBlockSizeFLASH))
 		mustWriteFile(t, filepath.Join(dir, "Kicks", "kick.syx"), msg)
 		idx, err := library.Scan(dir)
 		if err != nil {

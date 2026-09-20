@@ -5,13 +5,35 @@ Tempest's SysEx protocol, gathered from third-party reverse-engineering
 (DSI never published a spec). It supplements the summary in the main
 [README](../README.md#sysex-format-notes).
 
-**Status: unverified against this project's own hardware captures.** Everything
-below comes from external reverse-engineering (see Sources). Where it
-contradicts this repo's current implementation in `internal/sysex/`, that is
-called out explicitly. Before relying on any of this for a *write* path
-(`tempest_write_beat`, `tempest_set_sound_param`, etc.), confirm it with a
-`beat-mapper diff` capture session on real hardware, per the workflow in the
-README.
+**Status: §1–§3 and part of §5 are now confirmed** — not by a live hardware
+capture session (the Tempest wasn't reachable over USB when this was done),
+but by decoding ~500 real hardware-captured `.syx` files already present in
+this user's `~/Tempest` library. `internal/sysex/encoding.go` and
+`message.go` have been updated to match:
+
+- The collector-first unpack scheme (§3) is implemented and verified: real
+  FLASH (0x63) dumps decode to exact `/S/Category/Name` paths, and real
+  Beat/Kit (0x5F) dumps decode to exact names and BPM values.
+- `TypeBeat = 0x5F` (§1) is added to `message.go` and confirmed.
+- FLASH's 5th header byte (§2) is confirmed as a path-length prefix, not a
+  bank slot; `Location()`/`BankSlot()` and the affected server.go send path
+  were updated accordingly (see README's SysEx Format Notes for the
+  behavioural implication on `tempest_load_sound`'s bank/slot targeting).
+- The Beat/Kit BPM/swing/name fields (§5) are confirmed and exposed via
+  `sysex.KitBPM`, `sysex.KitSwing`, and `ExtractName`.
+
+Still **unconfirmed**: the RAM (0x60) bit-packed name field (§4) — brute-force
+search across 30 real RAM captures found no bit offset that decodes cleanly;
+the 0x5C/0x5E scheme specifically (assumed uniform with everything else per
+TempestEdit's source, but not independently decoded from a real 0x5C/0x5E
+capture the way FLASH/RAM/Beat were); and everything past
+`KitSequencerOffset` (step/track/gate data), which still needs a real
+`beat-mapper session` capture run — the two 0x5F files used for this
+confirmation are real beats, not the controlled single-change captures needed
+to compute stride/offset. Before relying on any of the still-unconfirmed
+material for a *write* path (`tempest_write_beat`, `tempest_set_sound_param`,
+etc.), confirm it with a `beat-mapper diff` capture session on real hardware,
+per the workflow in the README.
 
 ---
 

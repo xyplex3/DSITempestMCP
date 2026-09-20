@@ -429,7 +429,9 @@ func (s *Server) registerLibraryTools() {
 		mcp.WithDescription("Send a sound from the local library to the Tempest over SysEx. "+
 			"The user must have the Tempest powered on and SysEx IN set to USB. "+
 			"A 1-second pause is inserted between messages as required by the Tempest. "+
-			"Optionally specify bank (A or B) and slot (1–16) to target a specific hardware slot."),
+			"Optionally record the intended bank (A or B) and slot (1–16) in the local "+
+			"index — the Tempest does not accept a destination slot over SysEx, so select "+
+			"the slot on the hardware's own Save/Load prompt when the dump arrives."),
 		mcp.WithString("sound_id", mcp.Required(), mcp.Description("Sound ID or prefix from tempest_list_sounds / tempest_search_sounds")),
 		mcp.WithString("bank", mcp.Description("Target bank: A or B (optional)")),
 		mcp.WithNumber("slot", mcp.Description("Target slot 1–16 within the bank (optional)")),
@@ -536,15 +538,17 @@ func (s *Server) handleLoadSound(ctx context.Context, req mcp.CallToolRequest) (
 		return fail(err)
 	}
 
-	rewriteFLASHLocation(msgs, bank, slot)
-
 	if err := s.device.SendRawWithDelay(ctx, msgs, s.cfg.SysEx.InterMessageDelayMS); err != nil {
 		return fail(fmt.Errorf("sending %s: %w", snd.Name, err))
 	}
 
 	result := fmt.Sprintf("Loaded %q to Tempest (%d SysEx messages sent)", snd.Name, len(msgs))
 
-	// Record the bank assignment in the library index.
+	// Record the bank assignment in the library index. NOTE: a FLASH SysEx
+	// dump does not carry a destination bank/slot byte (see
+	// docs/sysex-tempest-format.md §2) — the Tempest assigns the incoming
+	// sound to a slot via its own front-panel Save/Load prompt. This only
+	// tracks the intended assignment locally for tempest_show_bank_map.
 	if bank != "" && slot > 0 {
 		s.libMu.Lock()
 		snd.BankSlot = &library.BankAssignment{
@@ -556,7 +560,7 @@ func (s *Server) handleLoadSound(ctx context.Context, req mcp.CallToolRequest) (
 		if err := library.SaveIndex(s.getLib(), s.cfg.Library.IndexPath); err != nil {
 			s.log.Warnf("Failed to save library index: %v", err)
 		}
-		result += fmt.Sprintf(" → Bank %s Slot %d", bank, slot)
+		result += fmt.Sprintf(" → Bank %s Slot %d (select this slot on the Tempest's Save/Load prompt when it appears)", bank, slot)
 	}
 
 	return ok(result), nil
@@ -574,29 +578,6 @@ func validateBankSlot(bank string, slot int) error {
 		return fmt.Errorf("slot must be 1–16, got %d", slot)
 	}
 	return nil
-}
-
-// rewriteFLASHLocation rewrites the location byte of every FLASH message in msgs
-// to target the given bank+slot. No-op when bank is empty or slot is zero.
-func rewriteFLASHLocation(msgs [][]byte, bank string, slot int) {
-	if bank == "" || slot <= 0 {
-		return
-	}
-	var loc uint8
-	if bank == "A" {
-		loc = uint8(slot - 1)
-	} else {
-		loc = uint8(slot + 15)
-	}
-	for i, msg := range msgs {
-		if sysex.Identify(msg) != sysex.TypeFLASHSound {
-			continue
-		}
-		unescaped := sysex.Unescape(msg)
-		name, _ := sysex.ExtractName(unescaped, sysex.TypeFLASHSound)
-		params := sysex.ExtractParams(unescaped, sysex.TypeFLASHSound)
-		msgs[i] = sysex.BuildFLASHDump(name, params, loc)
-	}
 }
 
 func (s *Server) handleIndexLibrary(_ context.Context, _ mcp.CallToolRequest) (*mcp.CallToolResult, error) {
@@ -854,8 +835,6 @@ func (s *Server) registerUtilityTools() {
 // describeDump returns a human-readable summary of a raw SysEx dump.
 func (s *Server) describeDump(raw []byte) (*mcp.CallToolResult, error) {
 	t := sysex.Identify(raw)
-	loc := sysex.Location(raw)
-	bank, slot := sysex.BankSlot(loc)
 
 	unescaped := sysex.Unescape(raw)
 	name, _ := sysex.ExtractName(unescaped, t)
@@ -868,14 +847,24 @@ func (s *Server) describeDump(raw []byte) (*mcp.CallToolResult, error) {
 		sysex.TypeFLASHSound:     "FLASH sound (0x63)",
 		sysex.TypeAlternateSound: "Alternate sound (0x5C)",
 		sysex.TypeAlternateBank:  "Alternate bank (0x5E)",
+		sysex.TypeBeatDump:       "Beat/Kit dump (0x5F)",
 	}[t]
 	if typeName == "" {
 		typeName = "Unknown"
 	}
 
+	// Bank/Slot is only meaningful for 0x5C (alternate bank sound) — see
+	// sysex.Location's doc comment. FLASH's byte[4] is a name-length prefix,
+	// not a slot, so it's omitted here rather than shown as misleading info.
+	var bankLine string
+	if t == sysex.TypeAlternateSound {
+		bank, slot := sysex.BankSlot(sysex.Location(raw))
+		bankLine = fmt.Sprintf("\n  Bank: %s, Slot: %d", bank, slot)
+	}
+
 	summary := fmt.Sprintf(
-		"Received SysEx dump:\n  Type: %s\n  Name: %q\n  Bank: %s, Slot: %d\n  Size: %d bytes\n  Fingerprint: %s",
-		typeName, name, bank, slot, len(raw), fp)
+		"Received SysEx dump:\n  Type: %s\n  Name: %q%s\n  Size: %d bytes\n  Fingerprint: %s",
+		typeName, name, bankLine, len(raw), fp)
 
 	return ok(summary), nil
 }
@@ -958,7 +947,7 @@ func (s *Server) handleMorphSound(ctx context.Context, req mcp.CallToolRequest) 
 	if len(morphed) == 0 {
 		return fail(fmt.Errorf("morph produced empty parameter block — check source sounds"))
 	}
-	dump := sysex.BuildFLASHDump(name, morphed, 0)
+	dump := sysex.BuildFLASHDump(name, morphed)
 
 	if err := os.MkdirAll(filepath.Dir(outPath), 0o700); err != nil {
 		return fail(err)
@@ -996,7 +985,7 @@ func (s *Server) handleCreateSound(ctx context.Context, req mcp.CallToolRequest)
 	}
 
 	params := sound.DefaultBlankParams()
-	dump := sysex.BuildFLASHDump(name, params, 0)
+	dump := sysex.BuildFLASHDump(name, params)
 
 	if err := os.MkdirAll(filepath.Dir(outPath), 0o700); err != nil {
 		return fail(err)

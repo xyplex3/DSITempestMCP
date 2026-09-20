@@ -340,18 +340,16 @@ entirely on `.syx` files captured to disk with `tempest_save_received_dump`.
 > **Beat dump alternative:** The Tempest supports exporting a single beat via
 > **Save/Load → Export Beat in RAM over MIDI → Next → USB → Export Now**. This
 > produces a smaller SysEx message than a full project dump (~1/16 the size),
-> which makes diffs faster to read. The message type byte for this command
-> was not previously known; a third-party editor's source (see
-> [docs/sysex-tempest-format.md](docs/sysex-tempest-format.md#1-message-types))
-> strongly suggests it is **`0x5F`** (the type byte that editor's own
-> "export as .syx" feature writes for a single beat — the other candidate,
-> `0x62`, looks like that editor's own save-file wrapper format rather than
-> the hardware wire format) — **still unconfirmed against real hardware.**
-> Determine it for certain by capturing one beat dump and
-> checking `raw[3]` (the byte after `F0 01 28`). Once confirmed, add it as
-> `TypeBeatDump` in `internal/sysex/message.go` and extend `beat-mapper
-> unescape` to handle it — also see that doc's §5 for a candidate
-> `BeatDataOffset` (1012) to seed the search.
+> which makes diffs faster to read. The message type byte for this command is
+> **`0x5F`**, added as `TypeBeatDump` in `internal/sysex/message.go` — confirmed
+> by decoding real 0x5F `.syx` files already in this user's library: the Kit
+> name and BPM fields (`sysex.ExtractName`, `sysex.KitBPM`, `sysex.KitSwing`)
+> decode byte-exact against the files' known contents. See
+> [docs/sysex-tempest-format.md](docs/sysex-tempest-format.md#1-message-types)
+> for details. `KitSequencerOffset` (1012) is seeded as the starting point for
+> the still-open step/track/gate stride search below — that part still needs a
+> real `beat-mapper session` capture run, since it requires controlled
+> single-change captures rather than arbitrary real beats.
 
 ### Build
 
@@ -617,43 +615,55 @@ tempest-mcp/
 
 ## SysEx Format Notes
 
-The Tempest uses two encoding schemes depending on message type:
+The Tempest uses one encoding scheme across every recognised message type:
 
-| Message type | Code | Encoding |
-|---|---|---|
-| RAM sound (edit buffer) | 0x60 | Tempest 7+1 (mystery byte) |
-| Project dump | 0x61 | Tempest 7+1 (mystery byte) |
-| FLASH sound | 0x63 | Tempest 7+1 (mystery byte) |
-| Bank sound (bulk dump) | 0x5C | Standard DSI 7-of-8 MSB |
-| Bank header | 0x5E | Standard DSI 7-of-8 MSB |
+| Message type | Code |
+|---|---|
+| RAM sound (edit buffer) | 0x60 |
+| Project dump | 0x61 |
+| FLASH sound | 0x63 |
+| Bank sound (bulk dump) | 0x5C |
+| Bank header | 0x5E |
+| Beat/Kit dump | 0x5F |
 
-The **Tempest 7+1 scheme** groups data as 7 bytes + 1 unknown "mystery" byte
-(written as 0x00 on re-encode; the Tempest accepts this). This is unique to
-the Tempest — all other DSI/Sequential instruments use the standard 7-of-8
-MSB scheme.
+Groups of 8 wire bytes are 1 leading **collector** byte followed by 7 data
+bytes; bit *k* of the collector is the high bit of data byte *k*. FLASH
+(0x63) and bank-sound (0x5C) messages carry one extra header byte before the
+payload — for FLASH this is a name/path-length prefix, not a bank/slot (see
+below).
 
-Sound names are null-terminated ASCII at the start of the unescaped payload.
-Factory sounds use `/S/Category/Name` prefixes (e.g. `/S/Kicks/Basic`).
+Sound names are null-terminated ASCII at the start of the unescaped payload
+for FLASH/Project; Beat/Kit names are a fixed-offset, space-padded 20-char
+field (`sysex.KitNameOffset`). Factory sounds use `/S/Category/Name` prefixes
+(e.g. `/S/Kicks/Basic`).
 
-Format details were reverse-engineered from KnobKraft Orm (Christof Ruch,
-2022).
-
-> **Update:** a second, independent reverse-engineering source —
-> [TempestEdit](https://www.bitrotten.com/tempest/editor/) (an unofficial
-> browser-based Tempest editor) and a companion
-> [SysEx bit map](https://gist.github.com/fadeddata/c39a3b4b10e1e51af58e49ef74aca116) —
-> describes the container format differently in several important ways:
-> a leading "collector" byte carrying MSBs (not a discardable mystery byte),
-> two additional message types (`0x5F` for a standalone Beat export and
-> `0x62` for a Beat "file" variant), a bit-packed (not null-terminated) name
-> field in RAM sound bodies, and concrete offsets for a Beat/Kit container
-> (BPM, swing, name, 32-entry pad table, sequencer region). None of this has
-> been verified against this repo's own hardware captures yet. Full details,
-> the complete parameter bit map, and specific discrepancies with the
-> encoding in `internal/sysex/` are in
-> **[docs/sysex-tempest-format.md](docs/sysex-tempest-format.md)** — read it
-> before touching `internal/sysex/encoding.go` or resuming the beat-mapper
-> research below.
+> **Confirmed 2026-09-19:** this collector-first scheme, `TypeBeatDump =
+> 0x5F`, and the FLASH path-length header replace an earlier, unverified pair
+> of schemes (a discardable "mystery byte" model, and a wrong-byte-order MSB
+> model) that didn't match real hardware. Confirmation came not from a live
+> capture session — the Tempest wasn't reachable over USB at the time — but
+> from decoding ~500 real hardware-captured `.syx` files already present in
+> this user's `~/Tempest` library: FLASH dumps decode to exact
+> `/S/Category/Name` paths, and 0x5F dumps decode to exact names and BPM
+> values, matching their known contents byte-for-byte.
+>
+> **One behavioural change this implies:** FLASH's 5th header byte is a
+> name-length, not a bank/slot destination — the Tempest does not appear to
+> accept a target slot over SysEx at all. `tempest_load_sound`'s `bank`/`slot`
+> arguments now only record the intended assignment in the local library
+> index (for `tempest_show_bank_map`); select the actual destination slot on
+> the Tempest's own Save/Load prompt when the dump arrives.
+>
+> Original sources: [TempestEdit](https://www.bitrotten.com/tempest/editor/)
+> (an unofficial browser-based Tempest editor) and a companion
+> [SysEx bit map](https://gist.github.com/fadeddata/c39a3b4b10e1e51af58e49ef74aca116),
+> cross-checked against this repo's prior baseline, KnobKraft Orm (Christof
+> Ruch, 2022). Still unconfirmed: the RAM (0x60) bit-packed name field, the
+> 0x5C/0x5E scheme specifically (assumed uniform with the rest, not
+> independently decoded), and everything past `KitSequencerOffset`
+> (step/track/gate data — needs a real `beat-mapper session` capture run, not
+> just existing files). Full details in
+> **[docs/sysex-tempest-format.md](docs/sysex-tempest-format.md)**.
 
 ---
 

@@ -146,7 +146,7 @@ func TestAnnotate(t *testing.T) {
 func TestParseSyx(t *testing.T) {
 	t.Run("valid file returns messages", func(t *testing.T) {
 		dir := t.TempDir()
-		msg := sysex.BuildFLASHDump("Snare", make([]byte, sysex.ParamBlockSizeFLASH), 0)
+		msg := sysex.BuildFLASHDump("Snare", make([]byte, sysex.ParamBlockSizeFLASH))
 		path := filepath.Join(dir, "snare.syx")
 		if err := os.WriteFile(path, msg, 0o644); err != nil {
 			t.Fatalf("writing syx: %v", err)
@@ -175,7 +175,7 @@ func TestParseSyx(t *testing.T) {
 func TestUnescapeProject(t *testing.T) {
 	t.Run("FLASH file returns result with correct type", func(t *testing.T) {
 		dir := t.TempDir()
-		msg := sysex.BuildFLASHDump("HiHat", make([]byte, sysex.ParamBlockSizeFLASH), 0)
+		msg := sysex.BuildFLASHDump("HiHat", make([]byte, sysex.ParamBlockSizeFLASH))
 		path := filepath.Join(dir, "hihat.syx")
 		if err := os.WriteFile(path, msg, 0o644); err != nil {
 			t.Fatalf("writing syx: %v", err)
