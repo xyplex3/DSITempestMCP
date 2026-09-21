@@ -724,7 +724,18 @@ picking this back up should start by reading this section first.
 
 ### 8.0 Uncommitted work sitting in the working tree
 
-Two things are built and compiling but **not committed**:
+**Update (2026-09-21, later the same day):** both items below were committed
+as `bbf5487`. The sound-parameter half is now finished: a hardware-capture
+test (`internal/sysex/soundparams_test.go`, backed by the three captures
+copied into `internal/sysex/testdata/sound-research/`) confirms the same 3/3
+hits described below, and `tempest_read_sound_params` is now wired up in
+`internal/server/server.go` (read-only, decodes a saved `.syx` or waits for
+a live dump; there is still no write path). The beat-pattern half
+(`cmd/capture-tmp`, §8.1-§8.4) is unchanged; that work needs the physical
+hardware and hasn't resumed.
+
+Two things were built and compiling but not committed at the time this
+section was originally written:
 
 - **`internal/sysex/soundparams.go`** — the full Sound (0x60) parameter offset
   table, generated from the community gist (fetched via `gh gist view

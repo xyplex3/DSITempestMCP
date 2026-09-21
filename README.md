@@ -283,6 +283,7 @@ your library.
 | `tempest_save_received_dump` | Wait for a dump and save it to a `.syx` file |
 | `tempest_send_syx_file` | Send a `.syx` file to the Tempest (with 1 s inter-message pause) |
 | `tempest_extract_sounds_from_project` | Wait for a project dump and extract individual sounds to `.syx` files |
+| `tempest_read_sound_params` | Decode a Sound (0x60) dump's named synthesis parameters, from a saved `.syx` or a live dump |
 
 ### Utilities
 
@@ -299,25 +300,30 @@ your library.
 
 ### The problem
 
-Two planned MCP tools are blocked because the DSI Tempest's internal byte
-layout has never been publicly documented:
+One planned MCP tool is still blocked because the DSI Tempest's internal byte
+layout for its sequencer has never been publicly documented:
 
 **Beat pattern writing** (`tempest_decode_project_beats`, `tempest_write_beat`,
 `tempest_clear_beat`) requires knowing exactly which bytes inside the project
 dump (0x61) represent each step's gate flag and velocity, and where each
 track's data begins. Without `BeatDataOffset`, `TrackStride`, and
 `StepStride`, there is no way to read or write a beat without corrupting the
-entire project.
+entire project. See `docs/sysex-tempest-format.md` §8 for the current state
+of this research.
 
-**Named sound parameter editing** (`tempest_read_sound_params`,
-`tempest_set_sound_param`) requires a table mapping each synthesis parameter
-— LP cutoff, envelope decay, oscillator pitch, etc. — to its byte offset in
-the 132-byte parameter block. Neither KnobKraft Orm nor any published Tempest
-document contains this table.
+**Named sound parameter reading** (`tempest_read_sound_params`) is now
+available: the parameter offset table (`internal/sysex/soundparams.go`) was
+mechanically translated from a community bit map and spot-checked against 3
+hardware captures (Pitch Env Attack, LP Env Release, AD Mode; see
+`docs/sysex-tempest-format.md` §7/§8). Most of its 121 parameters have not
+been individually re-verified, and there is no write path
+(`tempest_set_sound_param`) yet, so treat its output as a strong lead, not a
+certainty, until more parameters are hardware-confirmed.
 
-Both features require the same research method: **capture two dumps that
-differ by exactly one known hardware change, unescape the payload, diff the
-bytes, and record the offset.**
+The beat-pattern research requires the same method used to validate the
+sound-parameter table: **capture two dumps that differ by exactly one known
+hardware change, unescape the payload, diff the bytes, and record the
+offset.**
 
 ### The method
 

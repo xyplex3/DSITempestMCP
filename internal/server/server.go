@@ -671,6 +671,18 @@ func (s *Server) registerSysExTools() {
 		mcp.WithNumber("timeout_sec", mcp.Description("Seconds to wait (default 60)")),
 		mcp.WithNumber("min_quality", mcp.Description("Minimum extraction quality 0–100 (default 70)")),
 	), s.handleExtractSoundsFromProject)
+
+	s.mcp.AddTool(mcp.NewTool("tempest_read_sound_params",
+		mcp.WithDescription("Decode a Sound (0x60 RAM/edit-buffer) dump into named synthesis parameters — "+
+			"oscillators, filter, envelopes, LFOs, mod matrix. Provide path to decode a previously saved "+
+			".syx file, or omit it to wait for a live dump: on the Tempest press Save/Load → Export Sound "+
+			"in RAM over MIDI → Next → USB → Export Now. "+
+			"Bit locations are translated from a community-sourced bit map and spot-checked against 3 "+
+			"hardware captures (see docs/sysex-tempest-format.md §7/§8) — most individual parameters have "+
+			"not been independently re-verified."),
+		mcp.WithString("path", mcp.Description("Path to a previously saved RAM (0x60) .syx file. Omit to wait for a live dump instead.")),
+		mcp.WithNumber("timeout_sec", mcp.Description("Seconds to wait for a live dump if path is omitted (default 30)")),
+	), s.handleReadSoundParams)
 }
 
 func (s *Server) handleWaitForDump(_ context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
@@ -779,6 +791,56 @@ func (s *Server) handleExtractSoundsFromProject(_ context.Context, req mcp.CallT
 	case <-time.After(time.Duration(timeout) * time.Second):
 		return fail(fmt.Errorf("timeout after %ds — trigger Send Project from SETUP → MIDI", timeout))
 	}
+}
+
+func (s *Server) handleReadSoundParams(_ context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+	var raw []byte
+	if rawPath := strArg(req, "path"); rawPath != "" {
+		path, err := sanitizePath(rawPath)
+		if err != nil {
+			return fail(fmt.Errorf("invalid path: %w", err))
+		}
+		raw, err = os.ReadFile(path)
+		if err != nil {
+			return fail(fmt.Errorf("reading %s: %w", path, err))
+		}
+	} else {
+		if err := s.requireDevice(); err != nil {
+			return fail(err)
+		}
+		timeout := intArg(req, "timeout_sec", 30)
+		ch, cancel := s.device.Subscribe()
+		defer cancel()
+		select {
+		case r := <-ch:
+			raw = r
+		case <-time.After(time.Duration(timeout) * time.Second):
+			return fail(fmt.Errorf("timeout after %ds — trigger Export Sound in RAM over MIDI from Save/Load on the Tempest", timeout))
+		}
+	}
+
+	if sysex.Identify(raw) != sysex.TypeRAMSound {
+		return fail(fmt.Errorf("dump is not a Sound (0x60) RAM/edit-buffer dump"))
+	}
+	unescaped := sysex.Unescape(raw)
+	params := sysex.ExtractParams(unescaped, sysex.TypeRAMSound)
+	decoded := sysex.DecodeSoundParams(params)
+
+	var b strings.Builder
+	section := ""
+	for _, p := range sysex.SoundParams {
+		if p.Section != section {
+			section = p.Section
+			fmt.Fprintf(&b, "\n%s\n", section)
+		}
+		display, numeric, dispOK := sysex.DisplaySoundParam(p, decoded[p.Name])
+		if dispOK && display != "" {
+			fmt.Fprintf(&b, "  %-28s %s\n", p.Name, display)
+		} else {
+			fmt.Fprintf(&b, "  %-28s %g\n", p.Name, numeric)
+		}
+	}
+	return ok(strings.TrimSpace(b.String())), nil
 }
 
 // ── Utility Tools ─────────────────────────────────────────────────────────────
