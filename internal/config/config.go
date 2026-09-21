@@ -39,6 +39,12 @@ type LibraryConfig struct {
 type SysExConfig struct {
 	InterMessageDelayMS int    `yaml:"inter_message_delay_ms"`
 	CaptureDir          string `yaml:"capture_dir"`
+	// BufferBytes sizes the incoming SysEx receive buffer. The underlying
+	// gomidi library defaults to 1024 bytes if left at 0, which is smaller
+	// than a Beat/Kit (0x5F, ~5.9KB) or Project (0x61, likely much larger)
+	// dump — receiving either would panic the whole process. Default here is
+	// generous specifically to avoid that.
+	BufferBytes int `yaml:"buffer_bytes"`
 }
 
 // LogConfig controls log verbosity and optional per-byte MIDI tracing.
@@ -67,6 +73,7 @@ func DefaultConfig() (*Config, error) {
 		SysEx: SysExConfig{
 			InterMessageDelayMS: 1000,
 			CaptureDir:          filepath.Join(home, ".config", "tempest-mcp", "captures"),
+			BufferBytes:         1 << 20, // 1MiB — see SysExConfig.BufferBytes doc comment
 		},
 		Log: LogConfig{
 			Level:     "info",
@@ -107,6 +114,12 @@ func Load(path string) (*Config, error) {
 	// Validate channel range
 	if cfg.MIDI.Channel < 1 || cfg.MIDI.Channel > 16 {
 		cfg.MIDI.Channel = 10
+	}
+
+	// Guard against a stale/zeroed value ever reaching gomidi, which would
+	// silently fall back to its own too-small 1024-byte default.
+	if cfg.SysEx.BufferBytes <= 0 {
+		cfg.SysEx.BufferBytes = 1 << 20
 	}
 
 	return cfg, nil

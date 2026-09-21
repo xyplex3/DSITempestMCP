@@ -38,9 +38,10 @@ func New(cfg *config.Config, log *zap.SugaredLogger) *Server {
 		cfg: cfg,
 		log: log,
 		device: midi.New(midi.DeviceConfig{
-			DeviceName: cfg.MIDI.DeviceName,
-			Channel:    cfg.MIDI.Channel,
-			MIDITrace:  cfg.Log.MIDITrace,
+			DeviceName:      cfg.MIDI.DeviceName,
+			Channel:         cfg.MIDI.Channel,
+			MIDITrace:       cfg.Log.MIDITrace,
+			SysExBufferSize: uint32(cfg.SysEx.BufferBytes),
 		}),
 	}
 

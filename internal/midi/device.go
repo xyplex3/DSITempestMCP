@@ -39,7 +39,17 @@ type DeviceConfig struct {
 	DeviceName string // substring matched against available MIDI port names
 	Channel    uint8  // 1-indexed (stored); converted to 0-indexed when sending
 	MIDITrace  bool   // log every raw MIDI byte to stderr when true
+	// SysExBufferSize sizes the incoming SysEx receive buffer, in bytes. If
+	// left at 0, defaultSysExBufferSize is used instead of gomidi's own
+	// built-in default (1024 bytes) — too small for a Beat/Kit (0x5F,
+	// ~5.9KB) or Project (0x61) dump, both of which panic the process
+	// (index out of range) if they arrive over a too-small buffer.
+	SysExBufferSize uint32
 }
+
+// defaultSysExBufferSize is used whenever DeviceConfig.SysExBufferSize is 0.
+// See its doc comment for why gomidi's own 1024-byte default isn't safe here.
+const defaultSysExBufferSize = 1 << 20 // 1MiB
 
 // New creates an unconnected Device ready to be opened.
 func New(cfg DeviceConfig) *Device {
@@ -125,7 +135,7 @@ func (d *Device) Connect() error {
 		_ = outPort.Close()
 		return fmt.Errorf("opening input %q: %w", inPort, err)
 	}
-	stopListen, err := gomidi.ListenTo(inPort, d.handleIncoming, gomidi.UseSysEx())
+	stopListen, err := gomidi.ListenTo(inPort, d.handleIncoming, gomidi.UseSysEx(), gomidi.SysExBufferSize(d.sysExBufferSize()))
 	if err != nil {
 		_ = inPort.Close()
 		_ = outPort.Close()
@@ -190,6 +200,15 @@ func (d *Device) channelIdx() uint8 {
 	d.mu.Lock()
 	defer d.mu.Unlock()
 	return d.cfg.Channel - 1
+}
+
+// sysExBufferSize returns the configured SysEx receive buffer size, falling
+// back to defaultSysExBufferSize when unset. See DeviceConfig.SysExBufferSize.
+func (d *Device) sysExBufferSize() uint32 {
+	if d.cfg.SysExBufferSize == 0 {
+		return defaultSysExBufferSize
+	}
+	return d.cfg.SysExBufferSize
 }
 
 // Send transmits a MIDI message to the Tempest. Caller must not hold mu.
