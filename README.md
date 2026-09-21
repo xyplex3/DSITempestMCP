@@ -3,23 +3,23 @@
 Control your DSI/Sequential Tempest analog drum machine with Claude through
 the Model Context Protocol. Once installed, Claude can trigger pads, run the
 sequencer, search and load your sound library, design new sounds, and send or
-receive SysEx dumps — all from a conversation.
+receive SysEx dumps - all from a conversation.
 
 ## Features
 
-- **Pad triggering** — trigger named pads (`kick`, `snare`, `closed-hat`, …)
+- **Pad triggering** - trigger named pads (`kick`, `snare`, `closed-hat`, …)
   or raw MIDI note numbers with velocity and duration
-- **Sequence playback** — play a timed JSON event list at any BPM with
+- **Sequence playback** - play a timed JSON event list at any BPM with
   NoteOn/Off scheduling
-- **Beat FX CC control** — set distortion, compression, LP/HP filter, envelope
+- **Beat FX CC control** - set distortion, compression, LP/HP filter, envelope
   parameters, and more by name or CC number
-- **Sound library** — scan `~/Tempest`, full-text search, and load sounds to
+- **Sound library** - scan `~/Tempest`, full-text search, and load sounds to
   specific bank/slot assignments tracked in a JSON index
-- **Sound design** — morph two library sounds by byte-level parameter
+- **Sound design** - morph two library sounds by byte-level parameter
   interpolation; create blank sounds from the Tempest reference signature
-- **SysEx I/O** — wait for incoming dumps, save them to disk, send `.syx`
+- **SysEx I/O** - wait for incoming dumps, save them to disk, send `.syx`
   files back to the hardware, extract individual sounds from project dumps
-- **Beat research** — `beat-mapper` CLI computes step and track strides from
+- **Beat research** - `beat-mapper` CLI computes step and track strides from
   hardware captures to unlock future beat-writing tools
 
 ---
@@ -195,9 +195,9 @@ Flags:
 
 | Tool | Description |
 |---|---|
-| `tempest_start` | Send MIDI Start — begin sequencer playback |
+| `tempest_start` | Send MIDI Start - begin sequencer playback |
 | `tempest_stop` | Send MIDI Stop and halt the internal clock |
-| `tempest_continue` | Send MIDI Continue — resume from current position |
+| `tempest_continue` | Send MIDI Continue - resume from current position |
 | `tempest_set_tempo` | Start the internal clock at a given BPM (24 PPQN) |
 
 ### Pad Triggering
@@ -296,7 +296,7 @@ your library.
 
 ---
 
-## beat-mapper — SysEx Research CLI
+## beat-mapper - SysEx Research CLI
 
 ### The problem
 
@@ -330,7 +330,7 @@ offset.**
 The Tempest's project dump is encoded using the Tempest 7+1 SysEx scheme (7
 data bytes + 1 mystery byte, repeated). Before any comparison can be done,
 the wire bytes must be unescaped to recover the raw data payload. Once
-unescaped, a one-change diff produces at most a handful of changed bytes —
+unescaped, a one-change diff produces at most a handful of changed bytes -
 the position of those bytes *is* the offset table.
 
 `beat-mapper` automates this workflow. It has no MIDI dependency; it works
@@ -347,13 +347,13 @@ entirely on `.syx` files captured to disk with `tempest_save_received_dump`.
 > **Save/Load → Export Beat in RAM over MIDI → Next → USB → Export Now**. This
 > produces a smaller SysEx message than a full project dump (~1/16 the size),
 > which makes diffs faster to read. The message type byte for this command is
-> **`0x5F`**, added as `TypeBeatDump` in `internal/sysex/message.go` — confirmed
+> **`0x5F`**, added as `TypeBeatDump` in `internal/sysex/message.go` - confirmed
 > by decoding real 0x5F `.syx` files already in this user's library: the Kit
 > name and BPM fields (`sysex.ExtractName`, `sysex.KitBPM`, `sysex.KitSwing`)
 > decode byte-exact against the files' known contents. See
 > [docs/sysex-tempest-format.md](docs/sysex-tempest-format.md#1-message-types)
 > for details. `KitSequencerOffset` (1012) is seeded as the starting point for
-> the still-open step/track/gate stride search below — that part still needs a
+> the still-open step/track/gate stride search below - that part still needs a
 > real `beat-mapper session` capture run, since it requires controlled
 > single-change captures rather than arbitrary real beats.
 
@@ -365,7 +365,7 @@ go build -o beat-mapper ./cmd/beat-mapper
 
 ### Commands
 
-#### `unescape` — extract raw payload
+#### `unescape` - extract raw payload
 
 ```bash
 beat-mapper unescape baseline.syx [--out baseline.raw]
@@ -373,10 +373,10 @@ beat-mapper unescape baseline.syx [--out baseline.raw]
 
 Reads a `.syx` project dump, finds the first 0x61 message, unescapes it with
 the Tempest 7+1 codec, and writes the raw binary. Use this as a manual
-inspection helper — open the output in a hex editor (`xxd baseline.raw | less`)
+inspection helper - open the output in a hex editor (`xxd baseline.raw | less`)
 to browse the full payload visually.
 
-#### `diff` — compare two dumps
+#### `diff` - compare two dumps
 
 ```bash
 beat-mapper diff baseline.syx kick_a1_s1.syx [--label "kick A1 step1"]
@@ -393,9 +393,9 @@ Diff: baseline.syx vs kick_a1_s1.syx
 
 `--label` tags the diff in output for annotation later. If exactly two bytes
 change, the smaller offset is likely the velocity and the larger is the gate
-flag — confirm with the velocity-variation capture.
+flag - confirm with the velocity-variation capture.
 
-#### `annotate` — labelled hex dump
+#### `annotate` - labelled hex dump
 
 ```bash
 beat-mapper annotate capture.syx --map offsets.json
@@ -409,7 +409,7 @@ sessions:
 {"0x01A3": "A1 step1 velocity", "0x01A4": "A1 step1 gate"}
 ```
 
-#### `session` — batch diff + stride inference
+#### `session` - batch diff + stride inference
 
 ```bash
 beat-mapper session ./captures/
@@ -422,7 +422,7 @@ then prints a Go `const` block ready to paste into
 `internal/pattern/offsets.go`:
 
 ```go
-// Auto-generated by beat-mapper session — verify before use
+// Auto-generated by beat-mapper session - verify before use
 const (
     BeatDataOffset   = 0x0050
     TrackStride      = 0x????
@@ -434,31 +434,31 @@ const (
 
 ### Steps to unlock beat pattern writing
 
-Complete these steps in order. Do not skip ahead — each step depends on the
+Complete these steps in order. Do not skip ahead - each step depends on the
 previous.
 
-#### Step 1 — Capture project dumps from hardware
+#### Step 1 - Capture project dumps from hardware
 
 Set up a blank beat on the Tempest (all steps silent, all tracks clear). Use
 `tempest_save_received_dump` to save each capture.
 
-> **Pad-function trap (found the hard way — see
+> **Pad-function trap (found the hard way - see
 > [docs/sysex-tempest-format.md §7.2](docs/sysex-tempest-format.md#72-dead-end-16-beats-vs-16-sounds--a-pad-function-trap),
 > or just §7 if the anchor doesn't land exactly right):**
-> **16 Beats** selects which of the 16 *separate beats* is active — it does
+> **16 Beats** selects which of the 16 *separate beats* is active - it does
 > **not** select a track. To select a track/pad (A1, A2, …) within the beat
 > you're already on, use **16 Sounds** instead, then **16 Time Steps** to
 > program the step. Using 16 Beats to "switch tracks" silently switches to a
 > different beat entirely, and every capture in this table other than
-> `baseline.syx` will be worthless if you do this by mistake — verify by
+> `baseline.syx` will be worthless if you do this by mistake - verify by
 > checking the raw file size before diffing: `5925 + 8×(active note count)`
 > bytes for a Beat/Kit (0x5F) dump. Also clear the *previous* step explicitly
-> before programming the next one — toggling a new step doesn't clear the old
+> before programming the next one - toggling a new step doesn't clear the old
 > one, so "moving" a note without clearing first leaves both active.
 
 | File | What to program before dumping |
 |---|---|
-| `baseline.syx` | Empty beat — all steps silent, all tracks clear |
+| `baseline.syx` | Empty beat - all steps silent, all tracks clear |
 | `kick_a1_s1.syx` | Kick on track A1, step 1 only, velocity 100 |
 | `kick_a1_s2.syx` | Kick on track A1, step 2 only (step stride) |
 | `kick_a2_s1.syx` | Kick on track A2 (via **16 Sounds**, not 16 Beats), step 1 only (track stride) |
@@ -469,12 +469,12 @@ Set up a blank beat on the Tempest (all steps silent, all tracks clear). Use
 Files 1–4 are the minimum to compute both strides. Files 5–7 validate and
 should confirm the model before any code is written.
 
-**Step position is already confirmed** — see docs §7.4: it's a byte-aligned
+**Step position is already confirmed** - see docs §7.4: it's a byte-aligned
 field at sequencer-relative offset 65, encoded as `step_index × 3`. Track
 stride and the rest of the note-record layout are still open (§7.5) and
 need a bit-level diff tool, not just `beat-mapper diff`, per the same doc.
 
-#### Step 2 — Run the session command
+#### Step 2 - Run the session command
 
 ```bash
 mkdir ~/Tempest/captures/beat-research
@@ -486,14 +486,14 @@ Verify that `BeatDataOffset`, `StepStride`, and `TrackStride` all have real
 values (not `0x????`). Cross-check by running `beat-mapper diff` manually on
 the step-stride and track-stride pairs.
 
-#### Step 3 — Create `internal/pattern/offsets.go`
+#### Step 3 - Create `internal/pattern/offsets.go`
 
 Paste the `session` output into a new file:
 
 ```go
 package pattern
 
-// Beat layout constants — derived from beat-mapper session on hardware captures.
+// Beat layout constants - derived from beat-mapper session on hardware captures.
 const (
     BeatDataOffset   = 0x????  // fill from beat-mapper session output
     TrackStride      = 0x????
@@ -506,7 +506,7 @@ const (
 Do not proceed to Step 4 until this file contains real values verified against
 hardware.
 
-#### Step 4 — Implement and round-trip test `DecodeBeat` / `EncodeBeat`
+#### Step 4 - Implement and round-trip test `DecodeBeat` / `EncodeBeat`
 
 Once `offsets.go` is filled, implement:
 
@@ -519,7 +519,7 @@ Add `TestDecodeBeat_roundtrip`: decode a captured fixture → re-encode →
 compare bytes → must be byte-for-byte identical. **The round-trip test must
 pass before any write tool is built.**
 
-#### Step 5 — Implement `SpliceBeat` and `tempest_decode_project_beats`
+#### Step 5 - Implement `SpliceBeat` and `tempest_decode_project_beats`
 
 ```go
 // SpliceBeat replaces beat.Slot in a raw project dump, re-encodes with 7+1,
@@ -530,7 +530,7 @@ func SpliceBeat(rawProjectDump []byte, beat *Beat) ([]byte, error)
 Add `tempest_decode_project_beats` (read-only) first. Validate on hardware
 before adding any write tools.
 
-#### Step 6 — Add `tempest_write_beat` and `tempest_clear_beat`
+#### Step 6 - Add `tempest_write_beat` and `tempest_clear_beat`
 
 Only after `tempest_decode_project_beats` has been validated on real hardware.
 
@@ -568,7 +568,7 @@ dumps.
 go test ./...
 ```
 
-All packages have test coverage. The test suite runs without hardware — no
+All packages have test coverage. The test suite runs without hardware - no
 MIDI connection is required.
 
 ---
@@ -629,7 +629,7 @@ tempest-mcp/
 │   ├── pattern/
 │   │   └── pattern.go               Beat/Step/Track data structures, step-grid notation
 │   ├── sound/
-│   │   ├── sound.go                 Morph() — parameter-byte interpolation
+│   │   ├── sound.go                 Morph() - parameter-byte interpolation
 │   │   └── defaults.go              DefaultBlankParams() reference signature
 │   └── server/server.go             MCP tool registration and all handlers
 ├── go.mod
@@ -654,7 +654,7 @@ The Tempest uses one encoding scheme across every recognised message type:
 Groups of 8 wire bytes are 1 leading **collector** byte followed by 7 data
 bytes; bit *k* of the collector is the high bit of data byte *k*. FLASH
 (0x63) and bank-sound (0x5C) messages carry one extra header byte before the
-payload — for FLASH this is a name/path-length prefix, not a bank/slot (see
+payload - for FLASH this is a name/path-length prefix, not a bank/slot (see
 below).
 
 Sound names are null-terminated ASCII at the start of the unescaped payload
@@ -666,14 +666,14 @@ field (`sysex.KitNameOffset`). Factory sounds use `/S/Category/Name` prefixes
 > 0x5F`, and the FLASH path-length header replace an earlier, unverified pair
 > of schemes (a discardable "mystery byte" model, and a wrong-byte-order MSB
 > model) that didn't match real hardware. Confirmation came not from a live
-> capture session — the Tempest wasn't reachable over USB at the time — but
+> capture session - the Tempest wasn't reachable over USB at the time - but
 > from decoding ~500 real hardware-captured `.syx` files already present in
 > this user's `~/Tempest` library: FLASH dumps decode to exact
 > `/S/Category/Name` paths, and 0x5F dumps decode to exact names and BPM
 > values, matching their known contents byte-for-byte.
 >
 > **One behavioural change this implies:** FLASH's 5th header byte is a
-> name-length, not a bank/slot destination — the Tempest does not appear to
+> name-length, not a bank/slot destination - the Tempest does not appear to
 > accept a target slot over SysEx at all. `tempest_load_sound`'s `bank`/`slot`
 > arguments now only record the intended assignment in the local library
 > index (for `tempest_show_bank_map`); select the actual destination slot on
@@ -686,7 +686,7 @@ field (`sysex.KitNameOffset`). Factory sounds use `/S/Category/Name` prefixes
 > Ruch, 2022). Still unconfirmed: the RAM (0x60) bit-packed name field, the
 > 0x5C/0x5E scheme specifically (assumed uniform with the rest, not
 > independently decoded), and everything past `KitSequencerOffset`
-> (step/track/gate data — needs a real `beat-mapper session` capture run, not
+> (step/track/gate data - needs a real `beat-mapper session` capture run, not
 > just existing files). Full details in
 > **[docs/sysex-tempest-format.md](docs/sysex-tempest-format.md)**.
 
