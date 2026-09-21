@@ -22,18 +22,25 @@ this user's `~/Tempest` library. `internal/sysex/encoding.go` and
 - The Beat/Kit BPM/swing/name fields (§5) are confirmed and exposed via
   `sysex.KitBPM`, `sysex.KitSwing`, and `ExtractName`.
 
+**Update — live hardware session (2026-09-20):** the Tempest was reachable
+over USB and a real `beat-mapper`-style capture session was run (see §7).
+This independently reconfirmed `TypeBeat = 0x5F` via `raw[3]` on a live
+capture (not just decoding pre-existing files), found and fixed a real crash
+bug in the SysEx receive path, and made concrete progress inside
+`KitSequencerOffset` — the step-position field is now confirmed. Track
+stride and the exact note-record layout are still open; see §7 for what was
+tried and why it's harder than expected.
+
 Still **unconfirmed**: the RAM (0x60) bit-packed name field (§4) — brute-force
 search across 30 real RAM captures found no bit offset that decodes cleanly;
 the 0x5C/0x5E scheme specifically (assumed uniform with everything else per
 TempestEdit's source, but not independently decoded from a real 0x5C/0x5E
-capture the way FLASH/RAM/Beat were); and everything past
-`KitSequencerOffset` (step/track/gate data), which still needs a real
-`beat-mapper session` capture run — the two 0x5F files used for this
-confirmation are real beats, not the controlled single-change captures needed
-to compute stride/offset. Before relying on any of the still-unconfirmed
-material for a *write* path (`tempest_write_beat`, `tempest_set_sound_param`,
-etc.), confirm it with a `beat-mapper diff` capture session on real hardware,
-per the workflow in the README.
+capture the way FLASH/RAM/Beat were); and most of the sequencer region past
+`KitSequencerOffset` — §7 confirms the step-position field but track stride
+and the note-record format remain open. Before relying on any of the
+still-unconfirmed material for a *write* path (`tempest_write_beat`,
+`tempest_set_sound_param`, etc.), confirm it with a `beat-mapper diff`
+capture session on real hardware, per the workflow in the README.
 
 ---
 
@@ -545,24 +552,200 @@ prescribes.
 
 ---
 
+## 7. Live hardware capture session findings (2026-09-20)
+
+With the Tempest reachable over USB, a real capture session was run against
+a freshly **Initialize Project**'d Tempest (`Erase + Copy` → `Initialize
+Project`), following the beat-mapper workflow. Captures live in
+`~/Tempest/captures/beat-research/`. This section records what was learned,
+including two dead ends that cost real capture cycles — both worth avoiding
+in a future session.
+
+### 7.0 A crash bug, found and fixed
+
+The very first live capture attempt crashed the capture process entirely:
+`gomidi.ListenTo()` in `internal/midi/device.go` didn't pass
+`SysExBufferSize`, so it used the underlying library's 1024-byte default. A
+Beat/Kit (0x5F) dump is ~5.9KB — well past that — and the library panics
+(`index out of range`) rather than erroring gracefully. This would have
+crashed the real MCP server too, on any `tempest_wait_for_dump` /
+`tempest_save_received_dump` / `tempest_extract_sounds_from_project` call
+against a Beat or Project dump. Fixed in `internal/config/config.go` /
+`internal/midi/device.go` (`SysExConfig.BufferBytes`, default 1MiB) —
+commit `fb2e649`.
+
+### 7.1 `0x5F` reconfirmed live
+
+`raw[3] == 0x5F` on a live "Export Beat in RAM over MIDI" capture, matching
+the file-library-based confirmation in §1. Length 5925 bytes for a freshly
+initialized (empty) beat — matches the two pre-existing `HWC *.syx` samples
+used for the original confirmation.
+
+### 7.2 Dead end: 16 Beats vs 16 Sounds — a pad-function trap
+
+**This is the single most important operational fact for anyone running
+more captures.** The Tempest's pad-function keys are easy to confuse:
+
+- **16 Beats** — the 16 pads select which of the **16 separate beats**
+  (entire different patterns) is active. This is *not* a track/pad selector
+  within one beat.
+- **16 Sounds** — the 16 pads select which **sound/track pad** (A1–A16, or
+  B1–B16) *within the currently selected beat* you're editing. This is what
+  you actually want for track-stride testing.
+- **16 Time Steps** — the 16 pads represent 16 time steps for the
+  *currently selected sound* (from 16 Sounds), toggling a note at "the
+  velocity level at which the pad was struck" (Tempest Operation Manual,
+  "16 Time Steps"). This is also the source of §7.4's velocity noise.
+
+Early in this session, "track stride" was tested by pressing **16 Beats +
+pad 2** (intending "track A2") — which actually switched to an entirely
+different *beat* (Beat 2), not a different track in Beat 1. The resulting
+capture (`kick_a2_s1.syx`, first attempt) diffed against Beat 1's capture
+showed 58 bytes differing across a ~124-byte scattered range — that was
+beat-to-beat noise (likely uninitialized/non-deterministic leftover bytes
+in each beat's own sequencer region), not meaningful track-offset data. The
+capture was silently comparing two different beats the whole time.
+
+**Fix:** use **16 Sounds + pad N** to select track/pad AN, staying on the
+same beat throughout. Confirmed no false "success" on the corrected
+attempt (see §7.5) — the byte-count math checked out as informative instead.
+
+### 7.3 Dead end: clearing vs. adding a step
+
+When "moving" a note from step 1 to step 2 by pressing the step-2 pad, if
+step 1 isn't explicitly cleared first, the Tempest keeps *both* notes (two
+active steps) rather than moving the one note — toggling a lit pad in 16
+Time Steps mode deletes it, but pressing an *unlit* pad only inserts, it
+doesn't implicitly clear elsewhere. The payload size is the tell: a beat
+with N active notes is consistently `5925 + 8*N` raw bytes (7 unpacked
+bytes per note, one full 8-byte wire-encoding group). A same-length
+recapture after explicitly confirms whether a "move" was clean.
+
+### 7.4 Confirmed: step-position field
+
+Comparing three clean single-note captures (`kick_a1_s1.syx`,
+`kick_a1_s2.syx`, `kick_a1_s3.syx` — same track, same velocity target, step
+1/2/3 respectively, each with the prior step explicitly cleared) via
+`beat-mapper diff` gives a clean, reproducible 2-byte diff each time:
+
+| Absolute offset | Sequencer-relative offset | step 1 | step 2 | step 3 |
+|---|---|---|---|---|
+| `0x0437` | 67 (= `KitSequencerOffset` + 65) | `0x00` | `0x03` | `0x06` |
+| `0x043A` | 70 | `0x0B` | varies | varies |
+
+**`0x0437` (sequencer-relative offset 65) is confirmed as the step-position
+field, encoded as `step_index × 3`** — reproduced identically across two
+independent captures of "step 2" (both gave `0x03` at this offset, despite
+the *other* byte differing between the two takes). This is a solid,
+byte-exact, reproducible result — the strongest finding of this session
+after the encoding-scheme work.
+
+The `×3` multiplier suggests a finer time-resolution tick count rather than
+a flat 0–15 step index (3 ticks per 16th-note step, one guess), but the
+exact meaning of the multiplier hasn't been tested (e.g. by capturing a
+note on an 8th-note or triplet grid to see if the stride changes).
+
+**`0x043A` is not step-position-derived** — two independent captures of
+"step 2" gave different values (`0x33`/51 and `0x2B`/43) at this offset.
+Per the manual, 16 Time Steps programming captures a note "at the velocity
+level at which the pad was struck" — this is almost certainly (part of) the
+velocity field, contaminated by real tap-to-tap variance from manual
+programming. Isolating its exact formula would need a numeric/fixed-value
+entry method rather than live pad taps, if the Tempest has one (not yet
+checked against the manual).
+
+### 7.5 Still open: track stride and note-record layout
+
+With the 16-Beats/16-Sounds confusion (§7.2) corrected, a proper A2 test
+was attempted, but Beat 1 already had a leftover, never-cleared kick on A1
+step 3 from the §7.4 testing — so the resulting capture had *two* notes
+(A1 step 3 + the new A2 step 1), not a clean single-track swap. This
+actually turned out useful: it let the new note be isolated the same way
+§0→1-note transitions were tested, but with a negative result both times:
+
+- Comparing `baseline.syx` (0 notes) → `kick_a1_s1.syx` (1 note): best
+  fixed-offset insertion point realigns only 11 of ~4000 remaining bytes.
+- Comparing `kick_a1_s3.syx` (1 note) → the contaminated 2-note capture:
+  same result, 11/4000, and even the *prefix* before the "best" insertion
+  point only matched 82/175 bytes — not clean either.
+
+**Conclusion: the sequencer region past `KitSequencerOffset` (1012) almost
+certainly is not a flat, byte-aligned structure.** A single fixed-size
+record insertion should produce a clean prefix match + shifted-but-matching
+suffix; neither test found that. The far more likely explanation is
+**bit-packing** — sub-byte fields, the same technique already confirmed for
+the Sound (0x60) parameter body in §6 — where inserting one note shifts
+every subsequent bit-packed field by a non-byte-aligned amount, making
+naive byte-level diffing show near-total divergence downstream even for a
+small, local content change.
+
+What *is* confirmed, useful groundwork for whoever picks this up:
+
+- Header (offsets 0–51: BPM, swing, name, short name) and the full 960-byte
+  pad table (offsets 52–1011) are **always byte-identical** across single-note
+  variations — confirms §5's `KitPadTableOffset`/`KitSequencerOffset` split
+  and rules out pad-table involvement in step/track changes.
+- Total payload size is `5925 + 8N` raw bytes for `N` active notes (§7.3) —
+  a fast, cheap sanity check for "did this capture actually change what I
+  intended" before spending a `beat-mapper diff` call on it.
+- The step-position field (§7.4) is confirmed and byte-aligned — so *some*
+  fields in this region are plain bytes, at least until whatever offset the
+  bit-packing (if that's really what's happening) kicks in.
+
+**What a future session needs to make progress here:**
+
+1. **A bit-level diff tool**, not just byte-level `beat-mapper diff` — XOR
+   the two unpacked payloads bit-by-bit (after byte-aligning on the known
+   fixed header/pad-table region) and look for a run of changed bits with
+   clean boundaries, the same way the §6 gist was built for the Sound body.
+2. **A clean, single-variable track-stride test** — start from a beat with
+   *zero* notes (freshly initialized or all steps explicitly cleared),
+   confirm 5925 bytes before capturing, then add exactly one note on a
+   specific track/step. Repeat for a second track, same step. This avoids
+   both dead ends in §7.2/§7.3 at once.
+3. **A numeric-entry velocity test**, if the Tempest has one — check the
+   manual for a step-edit screen that sets velocity by value rather than
+   tap strength, to finally isolate `0x043A`'s exact encoding.
+
+---
+
 ## Suggested next steps for this repo
 
-1. **Confirm the collector-first unpack scheme (§3)** against a real
-   capture before changing any code — decode a known FLASH or Project dump
-   both the old way and the TempestEdit way, and see which produces a
-   plausible ASCII name and in-range parameter values.
-2. **Add `0x5F` (`TypeKit`/`TypeBeatDump` candidate) and `0x62`
-   (`TypeBeatFile` candidate)** to `internal/sysex/message.go`'s type table,
-   and confirm the correct one via a beat capture's `raw[3]`.
-3. **Re-derive `Location()`/`BankSlot()` for FLASH (`0x63`)** — the 5th
-   header byte is a name-length prefix in TempestEdit's model, not a slot
-   number; check whether slot is even present in the SysEx at all for FLASH
-   exports.
-4. **Seed `internal/pattern/offsets.go` with `BeatDataOffset = 1012`**
-   (`KIT_SEQUENCER_OFFSET`, once byte-domain is reconciled per §3) as a
-   starting hypothesis for the still-open beat-mapper research task, rather
-   than starting from zero.
-5. **Build a `internal/sysex/soundparams.go` offset table** from the gist's
-   full bit map to unlock `tempest_read_sound_params`/`tempest_set_sound_param`,
-   once §3 is confirmed (the bit map's byte numbering needs to be re-checked
-   against whichever unpack scheme turns out correct).
+Done as of this session (see §7 and `internal/sysex/`):
+
+1. ~~Confirm the collector-first unpack scheme (§3) against a real
+   capture~~ — done; implemented in `internal/sysex/encoding.go`.
+2. ~~Add `0x5F` to `internal/sysex/message.go`'s type table~~ — done
+   (`TypeBeat`/`TypeBeatDump`); `0x62` remains unadded/unconfirmed.
+3. ~~Re-derive `Location()`/`BankSlot()` for FLASH (`0x63`)~~ — done;
+   `BuildFLASHDump` no longer embeds a location byte, and `tempest_load_sound`
+   only tracks bank/slot locally (see README).
+
+Still open, in priority order:
+
+1. **Build a bit-level diff tool** (§7.5) — the blocker for both remaining
+   beat-mapper tasks below. Byte-level `beat-mapper diff` can't make further
+   progress on the sequencer region; it needs to operate at the bit level,
+   the way the §6 gist's parameter map was originally produced.
+2. **Redo the track-stride capture cleanly** (§7.5, step 2) — a
+   confirmed-zero-notes beat, one note added per test, no beat-switching.
+   `KitSequencerOffset = 1012` and the step-position field at
+   sequencer-relative offset 65 (§7.4) are solid starting points.
+3. **Isolate the velocity field** (`0x043A`/sequencer-relative offset 70,
+   §7.4) — needs a numeric-entry method instead of live pad taps, if one
+   exists.
+4. **Build a `internal/sysex/soundparams.go` offset table** from the gist's
+   full bit map (§6) to unlock `tempest_read_sound_params`/
+   `tempest_set_sound_param` — the unpack scheme is now confirmed, but the
+   gist's byte numbering still needs reconciling against it (§6's own
+   caveat), and the whole table needs re-validation against real
+   single-parameter-change captures per the README's existing protocol.
+5. **Independently verify the 0x5C/0x5E scheme** — still just assumed
+   uniform with everything else (§3), never decoded from real 0x5C/0x5E
+   content the way FLASH/RAM/Beat were.
+6. **Investigate the RAM (0x60) name field** — §4's bit-offset-880 theory
+   didn't hold up against 30 real captures; still unknown where (or if) RAM
+   dumps carry a name.
+7. **Capture and decode a real Project (0x61) dump** — zero examples exist
+   in this project's entire sample library (`~/Tempest`, `~/Tempest/captures`);
+   completely unexplored.

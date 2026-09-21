@@ -436,18 +436,37 @@ previous.
 Set up a blank beat on the Tempest (all steps silent, all tracks clear). Use
 `tempest_save_received_dump` to save each capture.
 
+> **Pad-function trap (found the hard way — see
+> [docs/sysex-tempest-format.md §7.2](docs/sysex-tempest-format.md#72-dead-end-16-beats-vs-16-sounds--a-pad-function-trap),
+> or just §7 if the anchor doesn't land exactly right):**
+> **16 Beats** selects which of the 16 *separate beats* is active — it does
+> **not** select a track. To select a track/pad (A1, A2, …) within the beat
+> you're already on, use **16 Sounds** instead, then **16 Time Steps** to
+> program the step. Using 16 Beats to "switch tracks" silently switches to a
+> different beat entirely, and every capture in this table other than
+> `baseline.syx` will be worthless if you do this by mistake — verify by
+> checking the raw file size before diffing: `5925 + 8×(active note count)`
+> bytes for a Beat/Kit (0x5F) dump. Also clear the *previous* step explicitly
+> before programming the next one — toggling a new step doesn't clear the old
+> one, so "moving" a note without clearing first leaves both active.
+
 | File | What to program before dumping |
 |---|---|
 | `baseline.syx` | Empty beat — all steps silent, all tracks clear |
 | `kick_a1_s1.syx` | Kick on track A1, step 1 only, velocity 100 |
 | `kick_a1_s2.syx` | Kick on track A1, step 2 only (step stride) |
-| `kick_a2_s1.syx` | Kick on track A2, step 1 only (track stride) |
+| `kick_a2_s1.syx` | Kick on track A2 (via **16 Sounds**, not 16 Beats), step 1 only (track stride) |
 | `kick_b1_s1.syx` | Kick on bank B track 1, step 1 (validates bank B region) |
 | `kick_a1_s1_v64.syx` | Kick on A1 step 1, velocity 64 (confirms velocity byte) |
 | `kick_4otf.syx` | Kick on A1 steps 1, 5, 9, 13 (four-on-the-floor validation) |
 
 Files 1–4 are the minimum to compute both strides. Files 5–7 validate and
 should confirm the model before any code is written.
+
+**Step position is already confirmed** — see docs §7.4: it's a byte-aligned
+field at sequencer-relative offset 65, encoded as `step_index × 3`. Track
+stride and the rest of the note-record layout are still open (§7.5) and
+need a bit-level diff tool, not just `beat-mapper diff`, per the same doc.
 
 #### Step 2 — Run the session command
 
