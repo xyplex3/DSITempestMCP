@@ -31,6 +31,14 @@ bug in the SysEx receive path, and made concrete progress inside
 stride and the exact note-record layout are still open; see §7 for what was
 tried and why it's harder than expected.
 
+**Session paused mid-work (2026-09-21) — read §8 before resuming.** §7.5's
+track-identity conclusion did not survive a more careful re-test and should
+be treated as unconfirmed; §8 has the corrected understanding, the
+operational gotchas that caused it, a new capture-verification tool, and
+exactly where to pick back up. There's also uncommitted work
+(`internal/sysex/soundparams.go`, `cmd/capture-tmp/`) sitting in the working
+tree — see §8.0.
+
 Still **unconfirmed**: the RAM (0x60) bit-packed name field (§4) — brute-force
 search across 30 real RAM captures found no bit offset that decodes cleanly;
 the 0x5C/0x5E scheme specifically (assumed uniform with everything else per
@@ -706,6 +714,129 @@ What *is* confirmed, useful groundwork for whoever picks this up:
 3. **A numeric-entry velocity test**, if the Tempest has one — check the
    manual for a step-edit screen that sets velocity by value rather than
    tap strength, to finally isolate `0x043A`'s exact encoding.
+
+---
+
+## 8. Session handoff — in progress (2026-09-21, paused mid-session)
+
+This section is a working handoff, not a confirmed-findings writeup like §7 —
+picking this back up should start by reading this section first.
+
+### 8.0 Uncommitted work sitting in the working tree
+
+Two things are built and compiling but **not committed**:
+
+- **`internal/sysex/soundparams.go`** — the full Sound (0x60) parameter offset
+  table, generated from the community gist (fetched via `gh gist view
+  c39a3b4b10e1e51af58e49ef74aca116`) and mechanically translated through the
+  raw-byte→unpacked-byte formula validated in §7 (3/3 confirmed hits: Pitch
+  Env Attack, LP Env Release, AD Mode). 121 parameters, `ReadSoundParam`/
+  `DisplaySoundParam`/`DecodeSoundParams` helpers, `ModSourceNames`/
+  `ModDestNames` lookup tables. Compiles and passes `go vet`/`gofmt`, but has
+  **no test coverage yet** and isn't wired into an MCP tool
+  (`tempest_read_sound_params`) yet. Next step: write a test that decodes the
+  real captures in `~/Tempest/captures/sound-research/` (`sound_baseline.syx`,
+  `sound_pitch_attack.syx`, `sound_lp_env_release.syx`) and asserts the known
+  parameter values, then wire up the read-only MCP tool.
+- **`cmd/capture-tmp/`** — a throwaway-turned-useful live-MIDI capture tool
+  (uses `internal/midi.Device` directly, unlike `beat-mapper` which has no
+  MIDI dependency by design — this is why it's a separate tool, not a
+  `beat-mapper` subcommand). Usage:
+  `capture-tmp <out.syx> <expected_note_count> [timeout_sec] [baseline.syx]`.
+  As of this session it auto-verifies every capture immediately: computes
+  note count from raw size (`(len-5925)/8`), flags a mismatch against
+  `expected_note_count`, decodes the step-position/velocity bytes for the
+  single-note case, and diffs the pad table against a baseline file if given.
+  Built specifically because manual hardware capture sessions kept producing
+  silently-contaminated files (see §8.2) — use it for every future capture,
+  don't go back to capturing blind. Not committed yet; decide whether it
+  belongs in the repo (it's proven valuable) or stays a local research tool.
+
+### 8.1 The §7.5 "track footprint" finding did not hold up
+
+§7.5 concluded that offsets `0x0440`–`0x04B6` (a ~58-byte-changing, ~124-byte
+footprint) encoded track/sound identity, based on two comparisons that both
+showed the same footprint change. Tonight, a more carefully controlled
+re-test contradicted this:
+
+- Two independently-verified single-note captures (`kick_a1_s1_v2.syx`, A1;
+  `kick_a2_s1_clean.syx`, A2 — both confirmed exactly 5933 bytes, i.e. one
+  note, via the new capture-tmp verifier) were diffed. Result: **only the
+  step-position byte (`0x0437`) and velocity byte (`0x043A`) differed — the
+  footprint was byte-identical.**
+- The step-position byte's value in `kick_a1_s1_v2.syx` was `0x30` = 48. Under
+  the confirmed `step_index × 3` formula that's **step 16, not step 1** —
+  despite the file being deliberately set up as "A1, step 1." `pos/3 = 16`
+  decodes (per the new tool's bar/step math) to **bar 2**, not bar 1.
+
+Conclusion: the step-edit ("16 Time Steps") screen can be scrolled to a later
+bar (`Soft Knob 2: See`, per the manual — "moves between displaying
+sequential time blocks within the beat"), and this happened at least once
+without an obvious remote cue, silently invalidating a "step 1" label. **The
+original §7.5 footprint conclusion is now unconfirmed and probably wrong** —
+it's more likely that at least one of the two captures behind it was
+contaminated by a stray note, a scrolled bar view, or a Copy-Sound side
+effect (see §8.2) rather than genuinely isolating track identity. The
+footprint's real meaning is back to unknown.
+
+**What's still solid, unaffected by this:** the step-position field itself
+(`0x0437`, `step_index × 3`, sequencer-relative offset 65), confirmed 3
+separate times with consistent values before tonight's confusion started.
+
+### 8.2 Operational failure modes hit this session (read before resuming)
+
+These cost real capture cycles tonight. Internalize them before doing more
+captures:
+
+1. **Copy Sound's pad-tap meaning depends on the current pad-function mode.**
+   "Press Copy, tap source pad, tap dest pad" only copies a *sound* correctly
+   in **16 Sounds** mode. If the machine is still in **16 Time Steps** mode
+   (left over from adding a note), the same taps get interpreted as step
+   numbers, which can silently create/toggle notes as a side effect. Always
+   explicitly switch to 16 Sounds before a Copy-Sound sequence.
+2. **Stray notes accumulate silently.** Multiple captures this session came
+   back with 2+ notes when exactly 1 was intended, with no clear single root
+   cause identified — sometimes a genuinely leftover note from earlier
+   testing, sometimes reappearing even after an Initialize Beat + careful
+   redo. Don't trust a capture's note count from memory — always check the
+   raw file size (`5925 + 8×N` bytes) before using it, which capture-tmp now
+   does automatically.
+3. **The step-edit view can scroll to a different bar** without an obvious
+   remote-visible cue, making a "step 1" label wrong (see §8.1). No fix
+   identified yet beyond checking the decoded position byte's bar value
+   (capture-tmp now warns if `bar != 1`) — worth checking the manual for how
+   to reliably reset `Soft Knob 2: See` to the first bar before each capture.
+4. **General lesson:** don't build a multi-step edit on top of uncertain
+   prior state. Re-Initialize (Beat, or Project if needed) before *every*
+   single-variable test rather than incrementally clearing/editing from
+   whatever state the machine happens to be in — it's slower per-capture but
+   has been reliably faster overall than debugging contaminated captures
+   after the fact.
+
+### 8.3 Where to resume
+
+1. Finish validating `cmd/capture-tmp`'s verify output on a real fresh
+   Initialize+export cycle (was interrupted mid-test — the last run timed
+   out because no export had been triggered yet).
+2. Redo the track-stride test from §7.5/§8.1 properly: Initialize Beat, add
+   one note on A1 step 1, **check capture-tmp's decoded bar/step is bar 1**
+   before trusting the file, then repeat for A2 step 1, then diff. Only trust
+   the result if both captures show bar 1 and note count 1.
+3. Decide what (if anything) in the footprint region is worth pursuing
+   further, or whether it needs the bit-level diff tool from §7.5 after all.
+4. Separately: finish the sound-parameter work (§8.0) — this doesn't depend
+   on any of the above and is much closer to done.
+
+### 8.4 Capture file inventory (as of this session)
+
+`~/Tempest/captures/beat-research/` has accumulated files from both the
+earlier (§7) and tonight's (§8) sessions, some with **misleading names** —
+notably `kick_a1_s1_v2.syx` is actually bar 2 step 1, not bar 1 step 1 (see
+§8.1). Don't assume a filename is accurate; re-verify with capture-tmp's
+decode before reusing any of these. `kick_a1_s1.syx`, `kick_a1_s2.syx`,
+`kick_a1_s3.syx` (the original §7.4 step-position captures) are still
+trusted — they predate tonight's confusion and their result reproduced
+consistently 3 times.
 
 ---
 
