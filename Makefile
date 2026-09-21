@@ -68,6 +68,39 @@ claude-config: install
 	echo '}'; \
 	echo ''
 
+## cursor-config: print the mcp.json snippet to add for Cursor
+cursor-config: install
+	@BINARY_PATH=$(INSTALL_DIR)/$(BINARY); \
+	echo ''; \
+	echo 'Add this to ~/.cursor/mcp.json (global) or .cursor/mcp.json (project):'; \
+	echo ''; \
+	echo '{'; \
+	echo '  "mcpServers": {'; \
+	echo '    "tempest": {'; \
+	echo '      "command": "'$$BINARY_PATH'",'; \
+	echo '      "args": ["--device", "Tempest"]'; \
+	echo '    }'; \
+	echo '  }'; \
+	echo '}'; \
+	echo ''
+
+## opencode-config: print the opencode.json snippet to add for OpenCode
+opencode-config: install
+	@BINARY_PATH=$(INSTALL_DIR)/$(BINARY); \
+	echo ''; \
+	echo 'Add this to ~/.config/opencode/opencode.json (global) or opencode.json (project):'; \
+	echo ''; \
+	echo '{'; \
+	echo '  "mcp": {'; \
+	echo '    "tempest": {'; \
+	echo '      "type": "local",'; \
+	echo '      "command": ["'$$BINARY_PATH'", "--device", "Tempest"],'; \
+	echo '      "enabled": true'; \
+	echo '    }'; \
+	echo '  }'; \
+	echo '}'; \
+	echo ''
+
 ## clean: remove build artifacts
 clean:
 	rm -f $(BINARY)

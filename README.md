@@ -81,9 +81,16 @@ your `PATH`:
 export PATH="$HOME/.local/bin:$PATH"
 ```
 
-### 4. Register with Claude Desktop
+### 4. Register with your MCP client
 
-Open (or create) the Claude Desktop config file:
+Every client below uses `/Users/YOUR_USERNAME/.local/bin/tempest-mcp` as the
+command; replace `YOUR_USERNAME` with your macOS username, and substitute the
+`--device` value if your port name differs. Each `make ...-config` target
+prints a ready-to-paste snippet using your actual install path.
+
+**Claude Desktop**
+
+Open (or create) the config file:
 
 ```
 ~/Library/Application Support/Claude/claude_desktop_config.json
@@ -102,21 +109,61 @@ Add the `tempest` entry:
 }
 ```
 
-Replace `YOUR_USERNAME` with your macOS username. Substitute the `--device`
-value if your port name differs. Print a ready-to-paste snippet with:
-
 ```bash
 make claude-config
 ```
 
-### 5. Restart Claude Desktop
+**Cursor**
 
-Quit and reopen Claude Desktop. The Tempest tools appear in Claude's tool
-list. Test with:
+Open (or create) `~/.cursor/mcp.json` for every project, or `.cursor/mcp.json`
+inside one project for just that project. Same `mcpServers` shape as Claude
+Desktop:
+
+```json
+{
+  "mcpServers": {
+    "tempest": {
+      "command": "/Users/YOUR_USERNAME/.local/bin/tempest-mcp",
+      "args": ["--device", "Tempest"]
+    }
+  }
+}
+```
+
+```bash
+make cursor-config
+```
+
+**OpenCode**
+
+Open (or create) `~/.config/opencode/opencode.json` for every project, or
+`opencode.json` inside one project for just that project. OpenCode's `mcp`
+block takes the full command (binary + args) as a single array:
+
+```json
+{
+  "mcp": {
+    "tempest": {
+      "type": "local",
+      "command": ["/Users/YOUR_USERNAME/.local/bin/tempest-mcp", "--device", "Tempest"],
+      "enabled": true
+    }
+  }
+}
+```
+
+```bash
+make opencode-config
+```
+
+### 5. Restart your MCP client
+
+Quit and reopen Claude Desktop / Cursor, or reload OpenCode. The Tempest
+tools appear in the client's tool list. Test with:
 
 > *"Call tempest_ping"*
 
-Claude responds with the connected device name and library sound count.
+The model responds with the connected device name and library sound count.
 
 ---
 
