@@ -702,10 +702,30 @@ What *is* confirmed, useful groundwork for whoever picks this up:
 
 **What a future session needs to make progress here:**
 
-1. **A bit-level diff tool**, not just byte-level `beat-mapper diff` - XOR
-   the two unpacked payloads bit-by-bit (after byte-aligning on the known
-   fixed header/pad-table region) and look for a run of changed bits with
-   clean boundaries, the same way the §6 gist was built for the Sound body.
+1. ~~**A bit-level diff tool**, not just byte-level `beat-mapper diff`~~ -
+   done: `beat-mapper bitdiff` (`cmd/beat-mapper/mapper/bitdiff.go`). It finds
+   the longest identical bit-aligned prefix between two unescaped payloads,
+   then searches a configurable window of bit shifts for the one that best
+   realigns the remaining content - exactly the "XOR bit-by-bit, look for a
+   clean boundary" method this item originally called for, generalized to
+   also handle deletions and to report a shift's *sharpness* (how many times
+   lower its mismatch rate is than a wrong shift's) rather than requiring a
+   literal zero-mismatch match, since real hardware captures essentially
+   never produce one (see below). See the README's beat-mapper section for
+   usage and full example output.
+
+   **Preliminary result, not yet independently verified:** running it against
+   this session's own trusted `baseline.syx` (0 notes) vs `kick_a1_s1.syx` (1
+   note, A1 step 1) finds a sharp best-fit shift of **+80 bits (10 bytes)** at
+   bit offset 8616 (byte 1077) - notably *not* byte 1012
+   (`KitSequencerOffset`) or a clean multiple of the 56-bit
+   (7-unpacked-byte) wire-group size one might naively expect. The match
+   isn't a literal zero (163/32800 bits still mismatch), but it's ~65x
+   cleaner than neighboring shifts, which is a strong signal, not proof. This
+   is a single data point from one capture pair - it needs a repeat run
+   against another confirmed single-note pair (e.g. `kick_a1_s2.syx`) before
+   trusting either the 8616-bit boundary or the 80-bit width as real,
+   per this doc's usual bar for confirmation.
 2. **A clean, single-variable track-stride test** - start from a beat with
    *zero* notes (freshly initialized or all steps explicitly cleared),
    confirm 5925 bytes before capturing, then add exactly one note on a
@@ -862,32 +882,32 @@ Done as of this session (see §7 and `internal/sysex/`):
 3. ~~Re-derive `Location()`/`BankSlot()` for FLASH (`0x63`)~~ - done;
    `BuildFLASHDump` no longer embeds a location byte, and `tempest_load_sound`
    only tracks bank/slot locally (see README).
+4. ~~Build a `internal/sysex/soundparams.go` offset table~~ - done; 121
+   parameters, spot-checked against 3 hardware captures, wired up as the
+   read-only `tempest_read_sound_params` MCP tool. No write path
+   (`tempest_set_sound_param`) yet, and most parameters are still unverified
+   individually - see §8.0.
+5. ~~Build a bit-level diff tool~~ (§7.5) - done: `beat-mapper bitdiff`. See
+   §7.5's "What a future session needs" for usage and a preliminary,
+   not-yet-independently-verified result from running it.
 
 Still open, in priority order:
 
-1. **Build a bit-level diff tool** (§7.5) - the blocker for both remaining
-   beat-mapper tasks below. Byte-level `beat-mapper diff` can't make further
-   progress on the sequencer region; it needs to operate at the bit level,
-   the way the §6 gist's parameter map was originally produced.
-2. **Redo the track-stride capture cleanly** (§7.5, step 2) - a
+1. **Redo the track-stride capture cleanly** (§7.5, step 2) - a
    confirmed-zero-notes beat, one note added per test, no beat-switching.
    `KitSequencerOffset = 1012` and the step-position field at
-   sequencer-relative offset 65 (§7.4) are solid starting points.
-3. **Isolate the velocity field** (`0x043A`/sequencer-relative offset 70,
+   sequencer-relative offset 65 (§7.4) are solid starting points; `beat-mapper
+   bitdiff`'s preliminary +80-bit/byte-1077 finding (§7.5) is a lead to
+   confirm, not yet a fact to build on.
+2. **Isolate the velocity field** (`0x043A`/sequencer-relative offset 70,
    §7.4) - needs a numeric-entry method instead of live pad taps, if one
    exists.
-4. **Build a `internal/sysex/soundparams.go` offset table** from the gist's
-   full bit map (§6) to unlock `tempest_read_sound_params`/
-   `tempest_set_sound_param` - the unpack scheme is now confirmed, but the
-   gist's byte numbering still needs reconciling against it (§6's own
-   caveat), and the whole table needs re-validation against real
-   single-parameter-change captures per the README's existing protocol.
-5. **Independently verify the 0x5C/0x5E scheme** - still just assumed
+3. **Independently verify the 0x5C/0x5E scheme** - still just assumed
    uniform with everything else (§3), never decoded from real 0x5C/0x5E
    content the way FLASH/RAM/Beat were.
-6. **Investigate the RAM (0x60) name field** - §4's bit-offset-880 theory
+4. **Investigate the RAM (0x60) name field** - §4's bit-offset-880 theory
    didn't hold up against 30 real captures; still unknown where (or if) RAM
    dumps carry a name.
-7. **Capture and decode a real Project (0x61) dump** - zero examples exist
+5. **Capture and decode a real Project (0x61) dump** - zero examples exist
    in this project's entire sample library (`~/Tempest`, `~/Tempest/captures`);
    completely unexplored.

@@ -111,6 +111,140 @@ func runDiff(_ *cobra.Command, args []string) error {
 	return nil
 }
 
+// ── bitdiff ───────────────────────────────────────────────────────────────────
+
+var (
+	bitDiffMaxShift int
+	bitDiffShowScan bool
+)
+
+func init() {
+	cmd := &cobra.Command{
+		Use:   "bitdiff <baseline.syx> <changed.syx>",
+		Short: "Compare two dumps bit-by-bit, searching for a non-byte-aligned insertion or deletion",
+		Long: "Compare two dumps bit-by-bit rather than byte-by-byte. Unlike diff, this " +
+			"can find a change that isn't a whole number of bytes wide or byte-aligned " +
+			"(e.g. one bit-packed sequencer note record added partway through the " +
+			"payload), which makes every downstream byte differ even though nothing " +
+			"past the insertion actually changed. See docs/sysex-tempest-format.md §7.5.",
+		Args: cobra.ExactArgs(2),
+		RunE: runBitDiff,
+	}
+	cmd.Flags().IntVar(&bitDiffMaxShift, "max-shift", 0,
+		fmt.Sprintf("search window in bits, each direction (default %d)", mapper.DefaultMaxShiftBits))
+	cmd.Flags().BoolVar(&bitDiffShowScan, "show-scan", false, "print the mismatch count for every shift tried")
+	rootCmd.AddCommand(cmd)
+}
+
+func runBitDiff(_ *cobra.Command, args []string) error {
+	base, err := mapper.UnescapeProject(args[0])
+	if err != nil {
+		return fmt.Errorf("baseline: %w", err)
+	}
+	chg, err := mapper.UnescapeProject(args[1])
+	if err != nil {
+		return fmt.Errorf("changed: %w", err)
+	}
+
+	r := mapper.BitDiff(base.Payload, chg.Payload, bitDiffMaxShift)
+	baseName, chgName := filepath.Base(args[0]), filepath.Base(args[1])
+
+	printBitDiffSummary(r, baseName, chgName)
+	printBitDiffVerdict(r)
+	printBitDiffContent(r, baseName, chgName)
+	if bitDiffShowScan {
+		printBitDiffScan(r)
+	}
+	return nil
+}
+
+func printBitDiffSummary(r mapper.BitDiffResult, baseName, chgName string) {
+	fmt.Printf("Bit diff: %s vs %s\n", baseName, chgName)
+	fmt.Printf("  baseline: %d bits (%d bytes)\n", r.BaselineBits, r.BaselineBits/8)
+	fmt.Printf("  changed:  %d bits (%d bytes)\n", r.ChangedBits, r.ChangedBits/8)
+	fmt.Printf("  common prefix: %d bits (%d bytes + %d bits)\n", r.PrefixBits, r.PrefixBits/8, r.PrefixBits%8)
+
+	switch {
+	case r.PrefixBits >= r.BaselineBits && r.PrefixBits >= r.ChangedBits:
+		fmt.Println("  payloads are bit-identical")
+	case r.BestShift > 0:
+		fmt.Printf("  best shift: +%d bits (%.2f bytes) - changed has extra content at bit offset %d\n",
+			r.BestShift, float64(r.BestShift)/8, r.PrefixBits)
+	case r.BestShift < 0:
+		fmt.Printf("  best shift: %d bits (%.2f bytes) - baseline has extra content, missing from changed, at bit offset %d\n",
+			r.BestShift, float64(r.BestShift)/8, r.PrefixBits)
+	default:
+		fmt.Println("  no aligning shift found in the search window - try a larger --max-shift")
+	}
+	if r.BestCompared > 0 {
+		fmt.Printf("  %d/%d bits mismatch at that shift\n", r.BestMismatches, r.BestCompared)
+	}
+}
+
+// printBitDiffVerdict prints how much to trust BestShift as a real
+// insertion/deletion boundary versus noise - see BitDiffResult.Clean and
+// BitDiffResult.LikelyBoundary.
+func printBitDiffVerdict(r mapper.BitDiffResult) {
+	switch {
+	case r.Clean():
+		fmt.Println("  CLEAN boundary: a strong signal this is a genuine insertion/deletion, not noise")
+	case r.LikelyBoundary(5):
+		fmt.Printf("  SHARP boundary (not perfectly clean, but %.0fx below the typical mismatch rate "+
+			"at a wrong shift): likely a real insertion/deletion, with residual mismatches probably "+
+			"from an unrelated field elsewhere in the payload\n", r.Sharpness())
+	case r.BestCompared > 0:
+		fmt.Println("  NOT clean: residual mismatches remain, with no sharp minimum - this region " +
+			"likely isn't a simple insertion/deletion, or --max-shift is too small to find the real one")
+	}
+}
+
+func printBitDiffContent(r mapper.BitDiffResult, baseName, chgName string) {
+	if len(r.InsertedBits) > 0 {
+		fmt.Printf("\nInserted content (%d bits), in %s but not %s:\n", len(r.InsertedBits), chgName, baseName)
+		fmt.Print(formatBits(r.InsertedBits))
+	}
+	if len(r.DeletedBits) > 0 {
+		fmt.Printf("\nDeleted content (%d bits), in %s but not %s:\n", len(r.DeletedBits), baseName, chgName)
+		fmt.Print(formatBits(r.DeletedBits))
+	}
+}
+
+func printBitDiffScan(r mapper.BitDiffResult) {
+	fmt.Println("\nShift scan (shift: mismatches/compared):")
+	for _, s := range r.Scan {
+		marker := ""
+		if s.Shift == r.BestShift {
+			marker = "  <- best"
+		}
+		fmt.Printf("  %+5d: %d/%d%s\n", s.Shift, s.Mismatches, s.Compared, marker)
+	}
+}
+
+// formatBits renders a slice of 0/1 bit values as a readable binary string
+// (grouped in bytes) plus its LSB-first-packed hex reconstruction. The final
+// packed byte may include zero-padding bits if the bit count isn't a
+// multiple of 8 - see mapper.PackBits.
+func formatBits(bits []byte) string {
+	var sb strings.Builder
+	sb.WriteString("  binary: ")
+	for i, b := range bits {
+		if i > 0 && i%8 == 0 {
+			sb.WriteString(" ")
+		}
+		if b == 0 {
+			sb.WriteString("0")
+		} else {
+			sb.WriteString("1")
+		}
+	}
+	sb.WriteString("\n  packed hex: ")
+	for _, b := range mapper.PackBits(bits) {
+		fmt.Fprintf(&sb, "%02X ", b)
+	}
+	sb.WriteString("\n")
+	return sb.String()
+}
+
 // ── annotate ──────────────────────────────────────────────────────────────────
 
 var annotateMapFile string

@@ -442,6 +442,41 @@ Diff: baseline.syx vs kick_a1_s1.syx
 change, the smaller offset is likely the velocity and the larger is the gate
 flag - confirm with the velocity-variation capture.
 
+#### `bitdiff` - find a non-byte-aligned insertion or deletion
+
+```bash
+beat-mapper bitdiff baseline.syx kick_a1_s1.syx [--max-shift N] [--show-scan]
+```
+
+`diff` can only find changes that land on the same byte offset in both files.
+A bit-packed region (like the sequencer past `KitSequencerOffset`) can shift
+everything downstream by a few bits instead of a whole byte when one note is
+added, which makes `diff` show near-total divergence from that point on even
+though nothing conceptually changed. `bitdiff` searches bit-by-bit instead:
+it finds the longest identical bit-aligned prefix, then searches a window of
+candidate shifts for the one that best realigns the remaining content.
+
+```
+Bit diff: baseline.syx vs kick_a1_s1.syx
+  baseline: 41440 bits (5180 bytes)
+  changed:  41496 bits (5187 bytes)
+  common prefix: 8616 bits (1077 bytes + 0 bits)
+  best shift: +80 bits (10.00 bytes) - changed has extra content at bit offset 8616
+  163/32800 bits mismatch at that shift
+  SHARP boundary (not perfectly clean, but 65x below the typical mismatch rate at a wrong shift): likely a real insertion/deletion, with residual mismatches probably from an unrelated field elsewhere in the payload
+
+Inserted content (80 bits), in kick_a1_s1.syx but not baseline.syx:
+  binary: 01100000 00000000 00000000 11101110 00000001 11010000 01000000 00000000 00000000 00000000
+  packed hex: 06 00 00 77 80 0B 02 00 00 00
+```
+
+A real hardware capture almost never produces an exact zero-mismatch match
+(some unrelated field, like a note count, can legitimately differ too), so
+look for a **sharp** drop in mismatch rate rather than a literal zero -
+`--show-scan` prints the mismatch count for every shift tried so you can see
+the dip yourself. `--max-shift` widens the search window (bits, each
+direction) if the true shift is larger than the default.
+
 #### `annotate` - labelled hex dump
 
 ```bash
