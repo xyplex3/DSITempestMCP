@@ -296,12 +296,39 @@ were tried, and none succeeded:**
    configurations - untested) - or this particular 40-case dispatch has
    nothing to do with SysEx types at all.
 
+8. **Direct comparison against XC32's actual crt0.S startup source.**
+   Downloaded Microchip's real XC32 v6.00 macOS distribution
+   (`xc32-v6.00-full-install-osx.tar.xz`, ~1.4GB) and extracted
+   `pic32m-libs/libpic32/startup/crt0.S` - the literal, hand-written assembly
+   every PIC32 application links against for its reset/startup sequence,
+   rather than inferring it by guessing. First confirmed something genuinely
+   new and solid: **byte 0 of both Main's and Panel's raw firmware decodes
+   as `jal <target>; nop`** - the exact idiomatic shape of crt0's `_reset:
+   jal _startup; nop` stub, with the second word being a true all-zero `nop`
+   (not just any nop-decoding value) in both independent files. This is real
+   structural evidence both firmware dumps begin exactly at the CPU's entry
+   point. But the deeper comparison came back negative: the file's NMI-check
+   preamble immediately after (`mfc0 k0,CP0_STATUS` / `ext k0,k0,19,1`,
+   unconditional, unguarded by any `#ifdef`) does not appear **anywhere** in
+   either binary - checked as a whole-file search for the instruction
+   pattern, not just at one guessed offset. Cross-checked this preamble
+   against two more independent source snapshots spanning over a decade (a
+   June-2013-tagged Microchip mirror on GitHub, closest to the Tempest's own
+   era, and a 2014 chipKIT variant) - identical in all three, and Microchip's
+   own v2.02 (December 2011) migration notes describe what did change in
+   that release (`.dinit` data-initialization tables), not this preamble.
+   There's no version history suggesting this code block ever looked
+   different. **Conclusion: Sequential/DSI wrote custom startup assembly
+   instead of linking the stock library `crt0.o`** - see §5.4 for the full
+   reasoning and what was tried to salvage a base-address candidate from it
+   anyway (also negative, but for a more specific reason).
+
 **What this consistent pattern of failure suggests:** not that any single
 attempt was almost right, but that blind statistical correlation over a raw
 firmware blob doesn't have enough structure to solve this without a real
 linker map, debug symbols, or confirmed code/data segment boundaries. Further
 variations on the same class of technique are unlikely to succeed where
-seven already haven't, the last one exhaustively - this is now a considered
+eight already haven't, several exhaustively - this is now a considered
 conclusion, not something to re-attempt without new input.
 
 ### 5.1 The error-message string table
@@ -418,6 +445,39 @@ merely assumes) the XC32/MPLAB-X-era conventions this investigation has
 been relying on elsewhere (e.g. the `procdefs.ld`-style linker script
 layout in §5).
 
+### 5.4 Stock crt0 comparison - ruled out, with a specific reason why
+
+Following up on item 8 in §5's list: since the stock XC32 NMI-check preamble
+is absent from both binaries entirely, the next question was whether a
+self-consistent *candidate* base address could still be extracted from just
+the confirmed `jal _startup`-shaped stub at offset 0, without needing the
+rest of crt0 to match.
+
+The `jal` instruction's target only fixes 28 of the target address's 32 bits
+(the top 4 come from the surrounding segment, not the instruction). Working
+backwards from the two known real PIC32 KSEG0/KSEG1 program-flash base
+values (`0x9D000000` cached / `0xBD000000` uncached - same physical memory,
+same low 28 bits either way) as the assumed value of file offset 0:
+
+- Main's `jal` target resolves to file offset `0x3CC14` (246,292 - within
+  Main's `0x80141`-byte size).
+- Panel's `jal` target resolves to file offset `0x668` (1,640 - within
+  Panel's `0x10029`-byte size).
+- Both in-range, and the ~0x3C5AC-byte gap between them is internally
+  consistent (falls straight out of the same base assumption applied to both
+  files independently).
+
+This looked promising enough to check directly - but disassembling both
+predicted offsets shows byte patterns that don't decode as clean, sensible
+MIPS code (no recognizable prologue, no `mfc0`/`ext` signature, nothing that
+reads as real instructions). **Being "in file bounds" turned out to be a
+weak filter, not real confirmation** - satisfied by construction for most of
+a 512KB candidate space. Given the crt0 comparison already independently
+established this is custom startup code, not the stock library, there's no
+more mileage left in chasing the *stock* `_startup` target specifically -
+whatever function the `jal` actually calls is Sequential's own code, with no
+public reference to compare it against.
+
 ## 6. Tooling reference (for picking this back up)
 
 None of this is committed to the repo (it's general-purpose reverse
@@ -453,23 +513,19 @@ needed:
 
 In priority order, given everything above:
 
-1. **Get XC32's actual runtime/startup source and compare it directly
-   against Main's and Panel's early code, rather than inferring the
-   sequence by guessing.** XC32 is GCC-derived, so Microchip is obligated
-   (GPL) to provide source for the GCC-derived runtime, including the
-   startup code every PIC32 program uses - the exact code this
-   investigation has been trying to infer all night. Categorically
-   stronger than any of the seven binary-only attempts in §5, since it's a
-   direct comparison against a real reference instead of statistical
-   inference. **In progress as of this session** - downloading the XC32
-   compiler's macOS archive (`xc32-v6.00-full-install-osx.tar.xz`,
-   Microchip's own official distribution) to extract its runtime source
-   directly, without needing to run the full installer/IDE.
+1. ~~Get XC32's actual runtime/startup source and compare it directly
+   against Main's and Panel's early code.~~ **Done, this session - see §5
+   item 8 and §5.4.** Result: negative, but conclusively and specifically
+   so - Sequential/DSI wrote custom startup assembly, not the stock
+   library `crt0.o`, so there's no reference startup code left to compare
+   against. This closes out "get the real source and diff it" as a
+   category, not just this one attempt.
 2. **Check whether the Internet Archive is back up**, and if so, search for
    an older `Tempest_Main_*.syx` release to diff against `1.5.0.2`'s header
-   (§5, item 3) - confirmed still blocked by a genuine, ongoing outage
-   across two separate checks in this session (not a bot-block, a real
-   "temporarily offline" response even from the raw API).
+   (§5, item 3) - **re-checked again this session (third check overall,
+   direct `curl` against the raw CDX API, not just the browser): still the
+   same "temporarily offline" outage page.** This is now a multi-session,
+   multi-hour-plus outage. Worth a periodic check, not a repeated one.
 3. **Look specifically for a legible photo of Panel's board** - smaller and
    likely less crowded than the analog voice board already found, and per
    §3, whatever chip it uses answers the question for Main too. Two more
@@ -480,11 +536,17 @@ In priority order, given everything above:
 4. **Ask directly in the Tempest hacking community** (the long-running
    Gearspace thread, or similar forums) whether anyone has already
    identified the exact PIC32 part or has schematics/service documentation.
-   Not yet attempted - this session only searched, never posted a question.
+   **Not yet attempted - this session only searched, never posted a
+   question. With items 1-3 all now closed out or blocked by external
+   circumstance, this is the highest-value remaining lever**: it's the one
+   option that doesn't depend on finding a document or a service that's
+   currently down, and it directly targets the two things actually needed
+   (exact PIC32 part number, or someone who's already solved this).
 5. Only after one of the above provides real new information, revisit
    cross-referencing the firmware's `"Failed to read sequence data"` and
    related strings back to their calling code - that was always the actual
-   goal, not base-address-hunting for its own sake. Seven independent
-   correlation/search techniques have now been tried without success (§5),
-   the last one exhaustively; further variations on the same approaches are
-   unlikely to succeed where seven already haven't.
+   goal, not base-address-hunting for its own sake. Eight independent
+   correlation/search/comparison techniques have now been tried without
+   success (§5), several exhaustively or conclusively; further variations
+   on the same approaches are unlikely to succeed where eight already
+   haven't.
