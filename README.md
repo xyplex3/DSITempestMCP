@@ -347,16 +347,23 @@ your library.
 
 ### The problem
 
-One planned MCP tool is still blocked because the DSI Tempest's internal byte
-layout for its sequencer has never been publicly documented:
+One planned MCP tool is still blocked, though real progress has been made on
+the DSI Tempest's undocumented sequencer byte layout:
 
 **Beat pattern writing** (`tempest_decode_project_beats`, `tempest_write_beat`,
-`tempest_clear_beat`) requires knowing exactly which bytes inside the project
-dump (0x61) represent each step's gate flag and velocity, and where each
-track's data begins. Without `BeatDataOffset`, `TrackStride`, and
-`StepStride`, there is no way to read or write a beat without corrupting the
-entire project. See `docs/sysex-tempest-format.md` §8 for the current state
-of this research.
+`tempest_clear_beat`) requires knowing exactly how a beat's active notes are
+stored in a Beat/Kit (0x5F) export. The **single-note case is now confirmed**
+(`docs/sysex-tempest-format.md` §9): each active note is an 80-bit (10-byte)
+record starting at absolute unpacked-payload byte 1077, with a confirmed step
+position, a confirmed track-identity byte (`0x80 | 0-based track index`, not
+a positional offset the way earlier sessions assumed), and a known-but-noisy
+velocity byte. What's still blocking a real implementation: **how multiple
+simultaneous notes are laid out is unresolved** - three attempts at a 2-note
+beat all lost one of the two notes, and it's unclear whether that's a capture
+procedure issue or something deeper (see §9.4/§9.5, including an open puzzle
+about whether Export Project reflects live state at all). Until that's
+sorted out, there's no way to read or write a beat with more than one note
+without risking data loss.
 
 **Named sound parameter reading** (`tempest_read_sound_params`) is now
 available: the parameter offset table (`internal/sysex/soundparams.go`) was
@@ -399,10 +406,12 @@ entirely on `.syx` files captured to disk with `tempest_save_received_dump`.
 > name and BPM fields (`sysex.ExtractName`, `sysex.KitBPM`, `sysex.KitSwing`)
 > decode byte-exact against the files' known contents. See
 > [docs/sysex-tempest-format.md](docs/sysex-tempest-format.md#1-message-types)
-> for details. `KitSequencerOffset` (1012) is seeded as the starting point for
-> the still-open step/track/gate stride search below - that part still needs a
-> real `beat-mapper session` capture run, since it requires controlled
-> single-change captures rather than arbitrary real beats.
+> for details. `KitSequencerOffset` (1012) marks where the pad table ends and
+> the note-record region begins; the single-note record format past that
+> offset is now confirmed (§9) using `beat-mapper bitdiff` below, not the
+> `beat-mapper session` stride-search workflow this section originally
+> described - that workflow assumed a fixed per-track/per-step grid, which
+> turned out not to match how the hardware actually stores notes.
 
 ### Build
 
@@ -516,109 +525,92 @@ const (
 
 ### Steps to unlock beat pattern writing
 
-Complete these steps in order. Do not skip ahead - each step depends on the
-previous.
+This section previously described a stride-search workflow (`beat-mapper
+session`, computing a fixed `TrackStride`/`StepStride` grid). That model
+turned out to be wrong: track identity isn't a storage position at all, it's
+a *value* inside a self-contained per-note record (see
+[docs/sysex-tempest-format.md §9](docs/sysex-tempest-format.md#9-confirmed-the-note-record-format-and-track-identity-2026-09-21-session-3)).
+The steps below reflect the current, corrected understanding. Complete them
+in order - each depends on the previous.
 
-#### Step 1 - Capture project dumps from hardware
+#### Step 1 - Resolve multi-note capture (currently blocking, see §9.4/§9.5)
 
-Set up a blank beat on the Tempest (all steps silent, all tracks clear). Use
-`tempest_save_received_dump` to save each capture.
+The single-note case is done (Step 2 below). What's not yet done is capturing
+more than one note in the same beat without losing one of them - tried three
+times, always losing whichever note was added first. Before writing any
+decoder code:
 
-> **Pad-function trap (found the hard way - see
-> [docs/sysex-tempest-format.md §7.2](docs/sysex-tempest-format.md#72-dead-end-16-beats-vs-16-sounds--a-pad-function-trap),
-> or just §7 if the anchor doesn't land exactly right):**
-> **16 Beats** selects which of the 16 *separate beats* is active - it does
-> **not** select a track. To select a track/pad (A1, A2, …) within the beat
-> you're already on, use **16 Sounds** instead, then **16 Time Steps** to
-> program the step. Using 16 Beats to "switch tracks" silently switches to a
-> different beat entirely, and every capture in this table other than
-> `baseline.syx` will be worthless if you do this by mistake - verify by
-> checking the raw file size before diffing: `5925 + 8×(active note count)`
-> bytes for a Beat/Kit (0x5F) dump. Also clear the *previous* step explicitly
-> before programming the next one - toggling a new step doesn't clear the old
-> one, so "moving" a note without clearing first leaves both active.
+1. Fresh `Initialize Beat`, then one note on track A1 step 1 via **16
+   Sounds** → tap A1 → **16 Time Steps** → tap step 1 (confirm on screen).
+2. **16 Sounds** → tap A2 → **16 Time Steps** → tap step 2, again confirming
+   on screen that A2 is actually selected and the beat number/name hasn't
+   changed.
+3. In **Save/Load**, double-check the menu says **Export Beat in RAM over
+   MIDI**, not Export Project - the two are adjacent and easy to mix up (this
+   derailed the last attempt at this exact test).
+4. Capture with `cmd/capture-tmp` (`capture-tmp out.syx 2 30
+   baseline.syx`), which verifies note count from raw file size
+   (`5925 + 8×N` bytes) before you trust the result.
 
-| File | What to program before dumping |
-|---|---|
-| `baseline.syx` | Empty beat - all steps silent, all tracks clear |
-| `kick_a1_s1.syx` | Kick on track A1, step 1 only, velocity 100 |
-| `kick_a1_s2.syx` | Kick on track A1, step 2 only (step stride) |
-| `kick_a2_s1.syx` | Kick on track A2 (via **16 Sounds**, not 16 Beats), step 1 only (track stride) |
-| `kick_b1_s1.syx` | Kick on bank B track 1, step 1 (validates bank B region) |
-| `kick_a1_s1_v64.syx` | Kick on A1 step 1, velocity 64 (confirms velocity byte) |
-| `kick_4otf.syx` | Kick on A1 steps 1, 5, 9, 13 (four-on-the-floor validation) |
+If that still loses a note, try the Tempest's **Beat Events** screen
+(`Events` key - row/column soft knobs, explicit Insert/delete) instead of
+pad-taps, a different input path that hasn't been tried yet. See docs §9.4
+for the full history and §9.5 for a related open question about whether
+Export Project reflects live state.
 
-Files 1–4 are the minimum to compute both strides. Files 5–7 validate and
-should confirm the model before any code is written.
+#### Step 2 - Confirmed: single-note record format (done, see §9.1-9.3)
 
-**Step position is already confirmed** - see docs §7.4: it's a byte-aligned
-field at sequencer-relative offset 65, encoded as `step_index × 3`. Track
-stride and the rest of the note-record layout are still open (§7.5) and
-need a bit-level diff tool, not just `beat-mapper diff`, per the same doc.
-
-#### Step 2 - Run the session command
-
-```bash
-mkdir ~/Tempest/captures/beat-research
-# move the 7 captures into that directory, then:
-beat-mapper session ~/Tempest/captures/beat-research/
-```
-
-Verify that `BeatDataOffset`, `StepStride`, and `TrackStride` all have real
-values (not `0x????`). Cross-check by running `beat-mapper diff` manually on
-the step-stride and track-stride pairs.
-
-#### Step 3 - Create `internal/pattern/offsets.go`
-
-Paste the `session` output into a new file:
+Using [`beat-mapper bitdiff`](#bitdiff---find-a-non-byte-aligned-insertion-or-deletion)
+against a confirmed-zero-notes baseline, a single active note is an **80-bit
+(10-byte) record** starting at absolute unpacked-payload byte 1077:
 
 ```go
 package pattern
 
-// Beat layout constants - derived from beat-mapper session on hardware captures.
+// Sequencer note-record layout - confirmed for exactly one active note,
+// see docs/sysex-tempest-format.md §9. Multi-note layout (§9.4/§9.5) is
+// still unresolved - do not assume these offsets repeat per note yet.
 const (
-    BeatDataOffset   = 0x????  // fill from beat-mapper session output
-    TrackStride      = 0x????
-    StepStride       = 0x????
-    StepGateByte     = 0
-    StepVelocityByte = 1
+    SequencerOffset    = 1012 // KitSequencerOffset: pad table ends, note records begin
+    NoteRecordBits      = 80  // one active note's record width
+    NoteRecordOffset    = 1077 // absolute byte offset of the record (single-note case)
+
+    // Byte offsets within one note record, relative to NoteRecordOffset:
+    RecordStepPosByte   = 2 // step_index * 3 (confirmed §7.4)
+    RecordTrackByte     = 4 // 0x80 | 0-based track index (confirmed A1-A3, §9.3)
+    RecordVelocityByte  = 5 // noisy/tap-driven (confirmed location, not exact formula)
+    // bytes 0, 1, 3, 6-9: constant in every single-note capture so far,
+    // meaning unknown - see §9.2.
 )
 ```
 
-Do not proceed to Step 4 until this file contains real values verified against
-hardware.
+#### Step 3 - Implement and round-trip test `DecodeBeat` / `EncodeBeat`
 
-#### Step 4 - Implement and round-trip test `DecodeBeat` / `EncodeBeat`
-
-Once `offsets.go` is filled, implement:
+Only once Step 1 is resolved and the multi-note layout is confirmed (not
+before - building this on an unverified assumption about how records repeat
+risks corrupting real beats). Implement:
 
 ```go
-func DecodeBeat(projectPayload []byte, slot int) (*Beat, error)
-func EncodeBeat(projectPayload []byte, beat *Beat) ([]byte, error)
+func DecodeBeat(kitPayload []byte) (*Beat, error)
+func EncodeBeat(kitPayload []byte, beat *Beat) ([]byte, error)
 ```
 
 Add `TestDecodeBeat_roundtrip`: decode a captured fixture → re-encode →
 compare bytes → must be byte-for-byte identical. **The round-trip test must
 pass before any write tool is built.**
 
-#### Step 5 - Implement `SpliceBeat` and `tempest_decode_project_beats`
+#### Step 4 - Add `tempest_decode_project_beats` (read-only)
 
-```go
-// SpliceBeat replaces beat.Slot in a raw project dump, re-encodes with 7+1,
-// and returns the modified dump ready to send.
-func SpliceBeat(rawProjectDump []byte, beat *Beat) ([]byte, error)
-```
+Validate on hardware before adding any write tools.
 
-Add `tempest_decode_project_beats` (read-only) first. Validate on hardware
-before adding any write tools.
+#### Step 5 - Add `tempest_write_beat` and `tempest_clear_beat`
 
-#### Step 6 - Add `tempest_write_beat` and `tempest_clear_beat`
+Only after `tempest_decode_project_beats` has been validated on real
+hardware.
 
-Only after `tempest_decode_project_beats` has been validated on real hardware.
-
-> **Warning:** Sending a modified project dump overwrites all 16 beats and all
-> sounds on the Tempest simultaneously. Always save a backup dump before
-> calling `tempest_write_beat`. The Tempest cannot confirm receipt.
+> **Warning:** Sending a modified Beat/Kit dump risks overwriting the current
+> beat on the Tempest. Always save a backup dump before calling
+> `tempest_write_beat`. The Tempest cannot confirm receipt.
 
 ### Steps to unlock named sound parameter editing
 
