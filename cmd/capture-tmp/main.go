@@ -10,11 +10,13 @@ import (
 	"tempest-mcp/internal/sysex"
 )
 
-// Sequencer-region offsets discovered this session (unconfirmed beyond the
-// single-note case — see docs/sysex-tempest-format.md §7). Only meaningful
-// when exactly one note is active.
+// Sequencer-region offsets discovered so far (see
+// docs/sysex-tempest-format.md §7 and §9). Only meaningful when exactly one
+// note is active — with multiple notes each field repeats per note record,
+// untested layout beyond the single-note case.
 const (
 	stepPosOffset  = 0x0437 // step index * 3
+	trackOffset    = 0x0439 // 0x80 | 0-based track index (A1=0x80, A2=0x81, A3=0x82 - §9.3)
 	velocityOffset = 0x043A // noisy, tap-driven
 
 	baseRawLen   = 5925 // raw message length for a 0-note beat
@@ -145,22 +147,25 @@ func printNoteCount(rawLen, expectedNotes int) int {
 	return notes
 }
 
-// printStepInfo decodes and prints the step-position/velocity bytes, only
-// meaningful when exactly one note is active (see package doc comment).
+// printStepInfo decodes and prints the step-position/track/velocity bytes,
+// only meaningful when exactly one note is active (see package doc comment).
 func printStepInfo(unescaped []byte, notes int) {
 	switch {
 	case notes == 1:
 		pos := unescaped[stepPosOffset]
+		trk := unescaped[trackOffset]
 		vel := unescaped[velocityOffset]
 		step := pos/3%16 + 1
 		bar := pos/3/16 + 1
 		fmt.Printf("step position byte (0x%04X): %d  -> bar %d, step %d (if pos/3=%d)\n", stepPosOffset, pos, bar, step, pos/3)
+		fmt.Printf("track byte (0x%04X): 0x%02X  -> track index %d (guess: A%d - only A1-A3 confirmed, see §9.3)\n",
+			trackOffset, trk, trk&0x7F, trk&0x7F+1)
 		fmt.Printf("velocity byte (0x%04X): %d (noisy/tap-driven, informational only)\n", velocityOffset, vel)
 		if bar != 1 {
 			fmt.Println("⚠ bar != 1 — the step-edit screen was probably scrolled to a later bar when this note was added")
 		}
 	case notes != 0:
-		fmt.Println("⚠ note count != 1 — step-position/velocity decode only understood for the single-note case, skipping")
+		fmt.Println("⚠ note count != 1 — step-position/track/velocity decode only understood for the single-note case, skipping")
 	}
 }
 

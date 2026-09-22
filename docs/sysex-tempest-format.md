@@ -871,6 +871,93 @@ consistently 3 times.
 
 ---
 
+## 9. Confirmed: the note record format and track identity (2026-09-21, session 3)
+
+With the Tempest reachable again and `beat-mapper bitdiff` (§7.5) now built,
+this session redid the track-stride test the way §7.5/§8.3 called for: a
+confirmed-zero-notes beat before every single-variable capture, one note
+added per test, `capture-tmp` verifying note count and bar/step before
+trusting any file. Three clean captures were taken - `kick_a1_s1_fresh.syx`,
+`kick_a2_s1_fresh.syx`, `kick_a3_s1_fresh.syx`, each: Initialize Beat → 16
+Sounds → tap the target track pad → 16 Time Steps → tap step 1 → Export Beat
+in RAM over MIDI. All three verified as exactly 1 note, bar 1, step 1, pad
+table byte-identical to baseline.
+
+### 9.1 The note record is 80 bits (10 bytes), not a byte-aligned 56 bits
+
+`beat-mapper bitdiff` against `baseline_fresh.syx` (0 notes) found the same
+result for both `kick_a1_s1_fresh.syx` and `kick_a2_s1_fresh.syx`: a common
+bit-aligned prefix of exactly 8616 bits (byte 1077), and a best-fit shift of
+**+80 bits (10 bytes)** with only 1/32800 bits mismatching - a 10,573x sharper
+match than any neighboring shift, as clean a boundary as this project has
+found anywhere. This is *not* the 56-bit (7-unpacked-byte) width one might
+naively expect from one Tempest-7+1 wire group; the note record is 3 bytes
+wider than that, non-obviously.
+
+### 9.2 Byte-by-byte layout of the 10-byte record
+
+Diffing the three captures pairwise (`kick_a1_s1_fresh.syx`,
+`kick_a2_s1_fresh.syx`, `kick_a3_s1_fresh.syx`) against each other and against
+baseline gives this layout for absolute unpacked-payload offsets 1077-1086
+(all three captures agree on every byte except the two noted as varying):
+
+| Offset | A1 s1 | A2 s1 | A3 s1 | What it is |
+|---|---|---|---|---|
+| 1077 | `06` | `06` | `06` | constant across all 3 - meaning unknown |
+| 1078 | `00` | `00` | `00` | constant across all 3 - meaning unknown |
+| 1079 (`0x0437`) | `00` | `00` | `00` | step position, confirmed formula (§7.4) - `0` for step 1 in all 3 |
+| 1080 | `77` | `77` | `77` | constant across all 3 - meaning unknown |
+| **1081 (`0x0439`)** | **`80`** | **`81`** | **`82`** | **track identity - see below** |
+| 1082 (`0x043A`) | `34` (52) | `2D` (45) | `27` (39) | velocity (§7.4, noisy/tap-driven) - matches `capture-tmp`'s independent readout exactly |
+| 1083-1086 | `02 00 00 00` | `02 00 00 00` | `02 00 00 00` | constant across all 3 - meaning unknown |
+
+### 9.3 Track identity: `0x80 | track_index` (0-based), byte `0x0439`
+
+Byte 1081 (`0x0439`) is the *only* byte, besides the known-noisy velocity
+byte, that differs across three otherwise-identical captures that vary in
+nothing but which track the note is on. Its value increases by exactly 1
+for each track: A1 = `0x80` (index 0), A2 = `0x81` (index 1), A3 = `0x82`
+(index 2). The high bit (`0x80`) is constant across all three - almost
+certainly an unrelated flag (possibly "note active"/gate-on) rather than
+part of the index - with the low bits carrying a 0-based track index. This
+is a clean, linear, 3-point-confirmed result, cross-validated two
+independent ways: a direct `beat-mapper diff` between capture pairs, and
+`beat-mapper bitdiff`'s bit-level insertion-content extraction against
+baseline. Both land on the exact same byte and the exact same values.
+
+**This resolves the §7.5 dead end.** The original "track stride" search
+assumed track identity was encoded by *storage position* - a fixed
+per-track/per-step region, the way the old (debunked, see §8.1) "58-byte
+footprint" theory imagined. It now looks structurally different: the
+sequencer likely stores a **sparse list of ~80-bit note records**, one per
+active note, each self-contained (step position, track identity, and
+velocity all as *values* inside the record) rather than a dense
+track-by-step grid addressed by a positional stride. That would also explain
+why every byte-level "insertion point" search in §7.5 came back nearly
+random past the pad table - there is no fixed stride to find, because track
+identity isn't positional here.
+
+**What this doesn't yet establish, and shouldn't be assumed:**
+
+- Only tracks A1-A3 tested. The linear pattern should be checked at least
+  once more at a higher index (e.g. A16, or crossing into bank B at B1) to
+  rule out a non-linear encoding (bank bit, wraparound, etc.) that only three
+  low, consecutive values couldn't reveal.
+- Only single-note beats tested. Whether multiple active notes are stored as
+  simple consecutive 10-byte records (the simplest version of the "sparse
+  list" theory) - and if so, in what order (insertion order? step order?) -
+  is untested. A 2-note capture (e.g. A1 step 1 + A2 step 2) is the natural
+  next test: it should show the payload grow by exactly 160 bits (2 x 80)
+  if the theory holds, and `bitdiff` should find two clean 80-bit insertions.
+- The four constant-across-all-3-captures bytes (1077, 1078, 1080, and the
+  1083-1086 block) are unexplained. They didn't vary in these tests because
+  nothing that might affect them (gate length, note duration, which sound is
+  assigned to the pad, etc.) was varied. Worth a capture that changes one of
+  those while holding track/step fixed, once a hypothesis for what they might
+  encode is worth testing.
+
+---
+
 ## Suggested next steps for this repo
 
 Done as of this session (see §7 and `internal/sysex/`):
@@ -887,27 +974,31 @@ Done as of this session (see §7 and `internal/sysex/`):
    read-only `tempest_read_sound_params` MCP tool. No write path
    (`tempest_set_sound_param`) yet, and most parameters are still unverified
    individually - see §8.0.
-5. ~~Build a bit-level diff tool~~ (§7.5) - done: `beat-mapper bitdiff`. See
-   §7.5's "What a future session needs" for usage and a preliminary,
-   not-yet-independently-verified result from running it.
+5. ~~Build a bit-level diff tool~~ (§7.5) - done: `beat-mapper bitdiff`.
+6. ~~Redo the track-stride capture cleanly~~ (§7.5, step 2) - done, see §9:
+   the note record is 80 bits wide at byte 1077, and track identity is a
+   linear value (`0x80 | track_index`) at byte `0x0439`, not a positional
+   stride. Confirmed across A1-A3; see §9's own caveats before treating it
+   as the final word (untested at higher indices, across the bank boundary,
+   or with multiple simultaneous notes).
 
 Still open, in priority order:
 
-1. **Redo the track-stride capture cleanly** (§7.5, step 2) - a
-   confirmed-zero-notes beat, one note added per test, no beat-switching.
-   `KitSequencerOffset = 1012` and the step-position field at
-   sequencer-relative offset 65 (§7.4) are solid starting points; `beat-mapper
-   bitdiff`'s preliminary +80-bit/byte-1077 finding (§7.5) is a lead to
-   confirm, not yet a fact to build on.
-2. **Isolate the velocity field** (`0x043A`/sequencer-relative offset 70,
-   §7.4) - needs a numeric-entry method instead of live pad taps, if one
-   exists.
-3. **Independently verify the 0x5C/0x5E scheme** - still just assumed
+1. **Validate §9's note-record theory further** - confirm the linear track
+   index holds at a higher index or across the A/B bank boundary, and test a
+   multi-note capture to check whether records really do concatenate as
+   simple consecutive 10-byte blocks (see §9's caveats for the exact tests).
+2. **Decode the still-unknown constant bytes in the note record** (offsets
+   1077, 1078, 1080, 1083-1086, §9.2) - untested against anything that might
+   vary them, like gate length or which sound is assigned to the pad.
+3. **Isolate the velocity field** (`0x043A`, §7.4/§9.2) - needs a
+   numeric-entry method instead of live pad taps, if one exists.
+4. **Independently verify the 0x5C/0x5E scheme** - still just assumed
    uniform with everything else (§3), never decoded from real 0x5C/0x5E
    content the way FLASH/RAM/Beat were.
-4. **Investigate the RAM (0x60) name field** - §4's bit-offset-880 theory
+5. **Investigate the RAM (0x60) name field** - §4's bit-offset-880 theory
    didn't hold up against 30 real captures; still unknown where (or if) RAM
    dumps carry a name.
-5. **Capture and decode a real Project (0x61) dump** - zero examples exist
+6. **Capture and decode a real Project (0x61) dump** - zero examples exist
    in this project's entire sample library (`~/Tempest`, `~/Tempest/captures`);
    completely unexplored.
