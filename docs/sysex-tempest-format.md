@@ -1119,6 +1119,20 @@ substantial task on its own, out of scope for continuing tonight's
 multi-note investigation - noted here as a new, real lead for a future
 session, not pursued further.
 
+**A separate research thread picked up from here: the Tempest's own
+firmware.** Prompted by a question about which microprocessor the Tempest
+uses, and pursued further once the firmware turned out to contain readable
+strings directly relevant to this section - `"Failed to read sequence
+data"`, `"Failed to read sequence size"`, and similar, presumably part of
+whatever code implements Export Beat. If that code can be found and read,
+it could explain the puzzle above directly rather than continuing to guess
+at it through more hardware captures. That investigation confirmed the
+Main/Panel processors are MIPS32 (a Microchip PIC32) and identified the
+Voice/SAM chips, but got stuck on the byte-precise memory address needed to
+actually read the code - see
+**[docs/firmware-analysis.md](firmware-analysis.md)** for the full state,
+what's been tried, and what would unblock it.
+
 ---
 
 ## Suggested next steps for this repo

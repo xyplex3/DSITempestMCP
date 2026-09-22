@@ -766,6 +766,18 @@ field (`sysex.KitNameOffset`). Factory sounds use `/S/Category/Name` prefixes
 
 ---
 
+## Firmware Analysis
+
+A separate, related research thread: what's known about the Tempest's own
+internal firmware (its four processors' architectures, chip identities, and
+an unresolved memory-layout question blocking deeper analysis) rather than
+the SysEx wire protocol. Not required reading to use this repo - see
+**[docs/firmware-analysis.md](docs/firmware-analysis.md)** if useful,
+motivated by strings found in the firmware ("Failed to read sequence data")
+that are directly relevant to the still-open Export Beat question above.
+
+---
+
 ## License
 
 MIT
