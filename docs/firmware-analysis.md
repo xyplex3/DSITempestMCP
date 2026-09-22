@@ -227,13 +227,72 @@ were tried, and none succeeded:**
    guessed as "the entry point" - too few anchors for any statistical signal
    at all.
 
+5. **Pointer-table correlation.** A follow-up session noticed that the
+   twelve `"Failed to ..."` strings (§5.1) sit in one tight, contiguous
+   block - the signature of a `const char* error_messages[]` table indexed
+   by an error code, not twelve separately-referenced literals. Searched for
+   that pointer table itself (a run of 4-byte pointers with the same
+   relative spacing as the twelve string offsets) two ways: an exact-order
+   search (0 hits - the table's real order likely doesn't match the
+   strings' file layout) and a flexible any-order pairwise-delta search
+   (found large "clusters," but they turned out to be false positives from
+   unrelated fixed-stride data elsewhere in the file - e.g. a repeating
+   132-byte delta matching this project's own known Sound parameter block
+   size, not the error table). With twelve strings there are 132 possible
+   pairwise deltas, enough combinations to coincidentally match all sorts of
+   unrelated regularly-spaced data in a 525KB file.
+6. **SysEx type-byte dispatch search.** Reasoned that code dispatching on an
+   incoming SysEx message's type byte would need to compare against several
+   of the known type values (`0x5C`/`0x5E`/`0x5F`/`0x60`/`0x61`/`0x63`)
+   close together, and searched for them as small immediate constants in the
+   code - a search that's base-independent by construction, unlike 1-4
+   above. Found a promising-looking cluster referencing `0x5f`, `0x61`, and
+   `0x63` together in the trusted early-code region - but disassembling it
+   directly showed this was a **false positive**: those bytes are ASCII
+   characters (`0x61`='a', `0x63`='c') being stored one-at-a-time to build
+   the literal string `"Basic"` (almost certainly a default factory
+   sound/beat name), not SysEx-type comparisons. **SysEx type bytes
+   (`0x5C`-`0x63`) overlap the printable-ASCII range (`\`, `]`, `^`, `_`,
+   `` ` ``, `a`, `b`, `c`) almost exactly, so a bare constant-value search
+   can't distinguish "loading a SysEx type for comparison" from "building an
+   ASCII string" at the level of a single instruction - worth remembering
+   before trusting a similar-looking hit again.** Refined the search to
+   require the constant be actually **compared** (`beq`/`bne`) against a
+   byte **loaded from memory** (`lbu`/`lb`) nearby, a pattern that should
+   only match real dispatch code - zero hits anywhere in the file. Either
+   the real dispatch uses a different pattern (a computed jump table indexed
+   by the type byte is plausible for a 6+-way switch), the search window was
+   too narrow, or it genuinely wasn't found this way.
+
 **What this consistent pattern of failure suggests:** not that any single
 attempt was almost right, but that blind statistical correlation over a raw
 firmware blob doesn't have enough structure to solve this without a real
 linker map, debug symbols, or confirmed code/data segment boundaries. Further
-variations on the same class of technique are unlikely to succeed where four
+variations on the same class of technique are unlikely to succeed where six
 already haven't - this is now a considered conclusion, not something to
 re-attempt without new input.
+
+### 5.1 The error-message string table
+
+A broader, cleaner `strings` pass over Main's firmware (filtering to
+readable-only runs) turned up more relevant strings than the original five:
+`"' loaded from MIDI"`, `"' loaded into Beat "`, `"Receiving MIDI Data... "`,
+`"MIDI Buffer Overflow"`, `"MIDI Status Byte"`, `"Send Main OS"`/`"Send Panel
+OS"`/`"Send Voice OS"`, `"Beat saved to file: "`/`"Sound saved to file:
+"`/`"Project saved to file: "`, and more `"Failed to read/write
+beat/project/sequence sounds/params"` variants beyond the original five.
+
+Computing file offsets for all twelve `"Failed to ..."` strings shows they
+sit in one tight, contiguous ~360-byte block (`0x6c2ae`-`0x6c43f`) - clearly
+one shared error-message table indexed by an error code, not twelve
+independently-referenced literals. **This directly explains why the original
+per-string reference search (item 1 above) found nothing**: code that does
+the equivalent of `puts(table[error_code])` only references the table's
+*base* once, not each string individually - searching for twelve separate
+direct references was never going to succeed regardless of the base address
+guess. Worth keeping in mind for any future string-based correlation
+attempt: check whether target strings cluster together (implying a shared
+table, one reference) before assuming each one has its own reference site.
 
 **What would actually unblock this**, roughly in order of how much new
 information each would provide:
@@ -254,7 +313,36 @@ information each would provide:
    an actual service outage), and Sequential's live download page only
    hosts the current `1.5.0.2` release with no older versions linked. Worth
    retrying later, or looking for a community-hosted mirror of an older
-   `Tempest_Main_*.syx` file.
+   `Tempest_Main_*.syx` file. **Re-checked in a later follow-up session, via
+   direct `curl` against the raw CDX API, not just the browser - still
+   returning the same outage page. This is a genuine multi-hour-plus outage,
+   not a one-off blip; worth checking again another day rather than
+   retrying repeatedly within the same session.**
+
+### 5.2 UI menu/screen text isn't stored as plain strings in any of the four firmware files
+
+A natural-seeming idea: search the manual's own menu and screen names (`"16
+Sounds"`, `"16 Beats"`, `"Quantize"`, `"Swing"`, `"Beat Events"`, `"Export
+Beat"`, etc.) against each firmware's string table, in case any of them
+sit near the code that would be worth reading. Tried this properly - pulling
+phrases *from the manual* and searching for them in the binaries, not just
+reasoning about whatever `strings` happened to already turn up - across all
+four firmware files. **None of the major UI screen/menu names appear as
+plain ASCII text anywhere, in any of the four files.** Only a handful of
+Main's already-known backend strings matched (`"Init Beat"`, `"Init
+Sound"`, `"Format Flash"`, `"Soft Key"` - all file-operation strings, not
+UI labels). Panel, Voice, and SAM's entire `strings` output is 100% noise -
+not one real English word in any of them, at any length threshold tried.
+
+This is a real, informative negative result, not a failed search: **the
+Tempest's on-screen menu text is not stored as plain readable strings in any
+of these four OS update files.** Plausible explanations, none confirmed:
+it's compressed, it's rendered from a bitmap/glyph-index font table rather
+than literal text, or it lives in some on-device resource area that OS
+*updates* specifically don't touch (as opposed to a one-time factory
+flash). Worth remembering as an open question if UI text ever becomes
+relevant again, but not pursued further - it doesn't bear on the Export
+Beat / sequence-data goal that motivates this investigation.
 
 ## 6. Tooling reference (for picking this back up)
 
@@ -293,15 +381,25 @@ In priority order, given everything above:
 
 1. **Check whether the Internet Archive is back up**, and if so, search for
    an older `Tempest_Main_*.syx` release to diff against `1.5.0.2`'s header
-   (§5, item 3) - the cheapest remaining idea that hasn't actually been
-   executed yet, just blocked by an external outage.
+   (§5, item 3) - the cheapest remaining idea, confirmed still blocked by a
+   genuine, ongoing outage across two separate checks in this session (not
+   a bot-block, a real "temporarily offline" response even from the raw
+   API).
 2. **Look specifically for a legible photo of Panel's board** - smaller and
    likely less crowded than the analog voice board already found, and per
-   §3, whatever chip it uses answers the question for Main too.
+   §3, whatever chip it uses answers the question for Main too. Two more
+   targeted image-search attempts in this session found nothing - this
+   angle looks exhausted for query variations specifically, not just
+   under-tried; a different source (community, service manual) is more
+   likely to help than another search.
 3. **Ask directly in the Tempest hacking community** (the long-running
    Gearspace thread, or similar forums) whether anyone has already
    identified the exact PIC32 part or has schematics/service documentation.
+   Not yet attempted - this session only searched, never posted a question.
 4. Only after one of the above provides real new information, revisit
    cross-referencing the firmware's `"Failed to read sequence data"` and
    related strings back to their calling code - that was always the actual
-   goal, not base-address-hunting for its own sake.
+   goal, not base-address-hunting for its own sake. Six independent
+   correlation/search techniques have now been tried without success (§5);
+   further variations on the same approaches are unlikely to succeed where
+   six already haven't.
