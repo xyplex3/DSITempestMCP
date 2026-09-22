@@ -984,6 +984,77 @@ The one capture from this dead end is saved as
 **it verified as exactly one note** (A2, step 2) via `capture-tmp`. Kept for
 the record, not to be treated as a 2-note reference.
 
+### 9.5 A diagnostic detour: Export Project doesn't seem to reflect live state
+
+To sanity-check §9.4 - was the note really being lost, or just not exported? -
+this session tried exporting the whole Project instead of a single Beat,
+after confirming on the Tempest's own screen that A1's step-1 note was still
+lit (i.e. genuinely present in the live edit buffer, not actually deleted).
+This surfaced two things, one useful and one concerning.
+
+**Useful: first real `0x5C`/`0x5E` samples, and they decode cleanly.**
+"Export Project in RAM over MIDI" is not a single `0x61` message as this doc
+previously assumed (§1's `PROJECT_FILE_TYPE` theory, never confirmed against
+real content) - on real hardware it sends **17 separate SysEx messages**: one
+`0x5E` header (373 bytes) followed by sixteen `0x5C` per-beat messages
+(~5926-5934 bytes each, i.e. the same size class as a standalone `0x5F` Beat
+export). Each `0x5C` message unescaped cleanly with the *same*
+collector-first scheme already confirmed for `0x5F`/`0x60`/`0x61`/`0x63`
+(`sysex.Unescape` routes `0x5C`/`0x5E` through `UnescapeStandard`, which is
+currently implemented identically to `Unescape7Plus1` - see the caveat in
+`internal/sysex/encoding.go`), and the same fixed byte offsets (name, BPM,
+step position `0x0437`, track `0x0439`, velocity `0x043A`) decoded sensibly
+against it. This is real, if informal, progress on the "still open" `0x5C`/
+`0x5E` verification item - not a full confirmation (no controlled
+single-variable test was run against `0x5C`/`0x5E` specifically), but it's
+no longer purely an assumption either.
+
+**Concerning: two Project exports, minutes apart with fresh edits in
+between, came back byte-identical except for 2 velocity-noise bytes.**
+Sequence: (1) exported Project, found 14 empty beats plus 2 non-empty ones,
+both containing a note on track `0x82` (A3) - not A1 or A2 at all - at step 1
+and step 2 respectively, in *two different* beat slots. (2) Re-initialized,
+carefully re-set A1 step 1 and A2 step 2, explicitly confirming on the
+screen's "Selected Beat & Sound" display that each track selection actually
+took effect before tapping its step. (3) Exported again (Save/Load's Export
+Project and Export Beat options are adjacent and this export also turned out
+to be a Project export, not a Beat export - see below). Result: **identical**
+to (1) in every byte except the two velocity bytes - same two beat slots
+non-empty, same track `0x82`, same steps. The careful re-edit in step (2), by
+every on-screen indication, should have changed this and didn't.
+
+This has at least two possible explanations, not yet distinguished:
+
+- Export Project in RAM over MIDI reflects something other than the live
+  edit buffer - e.g. the last-saved project state - rather than picking up
+  fresh unsaved pad edits the way Export Beat in RAM over MIDI appears to
+  (every §9.1-9.3 single-note test, all done via Export *Beat*, correctly
+  and repeatedly reflected fresh edits).
+- Something about on-screen track/step selection isn't actually persisting
+  into whatever any export reads, despite displaying correctly - which would
+  be a more fundamental problem, but is hard to square with §9.1-9.3's own
+  clean, repeated single-note results via the same pad-tap mechanism.
+
+**This means §9.4's original question is still genuinely open, not
+answered.** The "careful, verified" re-attempt's export turned out to be a
+*Project* export (easy to mis-tap in Save/Load, and this session did it
+twice in a row), not the *Beat* export §9.1-9.4 had been using - so it
+doesn't actually test whether Export Beat correctly captures two notes on
+two tracks when the pad-taps are done carefully. That specific test - fresh
+Initialize, carefully-verified A1 step 1 + A2 step 2 on screen, then
+double-check the Save/Load menu says **Export Beat**, not Export Project,
+before confirming - has still never actually been run. It's the most direct
+next step, ahead of both the Beat Events screen idea (§9.4) and investigating
+Export Project's semantics (interesting in its own right, but a detour from
+the original multi-note question).
+
+Captures from this detour: `project_a1s1_a2s2.syx` and
+`kick_a1s1_a2s2_verified.syx` in `~/Tempest/captures/beat-research/` (both
+multi-message Project exports, despite the second filename's name implying a
+single verified Beat capture - misleading, kept for the record. Use
+`sysex.SplitMessages` to break either into its 17 individual messages before
+decoding).
+
 ---
 
 ## Suggested next steps for this repo
@@ -1012,27 +1083,47 @@ Done as of this session (see §7 and `internal/sysex/`):
 
 Still open, in priority order:
 
-1. **Solve the multi-note capture problem** (§9.4) - adding a second note on
-   a different track via 16 Sounds/16 Time Steps pad-taps loses the first
-   note, three times in a row, even with playback confirmed off. Try the
-   Beat Events screen (`Events` key, row/column soft knobs, explicit
-   Insert/delete) instead of pad-taps before assuming anything about how
-   (or whether) multiple notes concatenate in the sequencer region.
-2. **Validate §9's note-record theory further** - once multi-note capture
+1. **Redo the multi-note Export *Beat* test properly** (§9.4/§9.5) - the
+   "careful, verified" re-attempt accidentally captured via Export *Project*
+   twice in a row (easy to mis-tap; adjacent Save/Load menu items) rather
+   than Export Beat, so the original question - does a correctly-verified
+   A1 step 1 + A2 step 2 Beat export show one note or two? - is still
+   unanswered, not resolved negatively. Redo it, double-checking the
+   Save/Load screen says "Export Beat," not "Export Project," before
+   confirming. If it still loses a note, try the Beat Events screen
+   (`Events` key, row/column soft knobs, explicit Insert/delete) as a
+   different input path than pad-taps.
+2. **Figure out whether Export Project reflects live state** (§9.5) - two
+   Project exports, with a careful fresh Initialize-and-edit cycle in
+   between, came back byte-identical except for 2 velocity-noise bytes, as
+   if the edits weren't seen at all. Worth an explicit test: make one
+   deliberate, large, unmistakable change (e.g. a note on A16 instead of
+   A1), verify it on screen, then Export Project immediately - if it still
+   doesn't show up, Export Project likely isn't reading the live edit
+   buffer the way Export Beat does.
+3. **Validate §9's note-record theory further** - once multi-note capture
    works, confirm the linear track index holds at a higher index or across
    the A/B bank boundary, and check whether records concatenate as simple
    consecutive 10-byte blocks the way §9's "sparse list" theory predicts.
-3. **Decode the still-unknown constant bytes in the note record** (offsets
+4. **Decode the still-unknown constant bytes in the note record** (offsets
    1077, 1078, 1080, 1083-1086, §9.2) - untested against anything that might
    vary them, like gate length or which sound is assigned to the pad.
-4. **Isolate the velocity field** (`0x043A`, §7.4/§9.2) - needs a
+5. **Isolate the velocity field** (`0x043A`, §7.4/§9.2) - needs a
    numeric-entry method instead of live pad taps, if one exists.
-5. **Independently verify the 0x5C/0x5E scheme** - still just assumed
-   uniform with everything else (§3), never decoded from real 0x5C/0x5E
-   content the way FLASH/RAM/Beat were.
-6. **Investigate the RAM (0x60) name field** - §4's bit-offset-880 theory
+6. ~~Independently verify the 0x5C/0x5E scheme~~ - partially done, see §9.5:
+   real `0x5C`/`0x5E` samples now exist (from Export Project's 17-message
+   structure) and decode cleanly with the same collector-first scheme and
+   the same byte offsets as `0x5F`. Not a full confirmation - no controlled
+   single-variable test was run against `0x5C`/`0x5E` specifically - but no
+   longer purely an assumption either.
+7. **Investigate the RAM (0x60) name field** - §4's bit-offset-880 theory
    didn't hold up against 30 real captures; still unknown where (or if) RAM
    dumps carry a name.
-7. **Capture and decode a real Project (0x61) dump** - zero examples exist
-   in this project's entire sample library (`~/Tempest`, `~/Tempest/captures`);
-   completely unexplored.
+8. ~~Capture and decode a real Project (0x61) dump~~ - superseded, see §9.5:
+   "Export Project in RAM over MIDI" does not send a `0x61` message at all
+   on real hardware. It sends 17 separate messages - one `0x5E` header plus
+   sixteen `0x5C` per-beat messages - contradicting this doc's original
+   `PROJECT_FILE_TYPE = 0x61` assumption (§1) for what this specific export
+   action produces. Whether `0x61` is used for some *other* action (a
+   different kind of backup/dump) is still unknown and would need its own
+   investigation if it matters.
