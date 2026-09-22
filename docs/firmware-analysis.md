@@ -316,6 +316,71 @@ larger, more active, and more likely to have already done this identification
 - worth asking there too, framed as "what control MCU does the OB-6/Prophet-6
 use" rather than Tempest-specifically, given the shared-architecture claim.
 
+### 4.2 Downloaded and directly compared OB-6 and Mopho firmware - real progress, still not a full solve
+
+Followed up on §4.1 by actually pulling the two sibling products' official
+firmware and running them through the same pipeline as Tempest's, rather
+than relying on secondhand forum claims. Both downloaded from official
+sources: `Mopho_Main_1.4.syx` (`sequential.com`, 2010 release) and
+`OB6_Main_1.8.0.syx` (`oberheim.com`, 2024 release - the current OS as of
+this session, giving a much newer toolchain build than Tempest's 2017
+`1.5.0.2`).
+
+**Wire format is shared platform-wide.** Both files use `F0 01 <device
+byte> <type byte>` headers structurally identical to Tempest's (`01 28`) -
+Mopho uses `01 25`, OB-6 uses `01 2e`. Stripping the same 4-byte header and
+running the same collector-first 7+1 unescape (`sysex.Unescape7Plus1`)
+against OB-6's payload works cleanly. This is useful independent
+confirmation that this repo's wire-format implementation is a real,
+general DSI/Sequential convention, not something reverse-engineered to fit
+Tempest specifically.
+
+**OB-6 decodes as clean MIPS32/PIC32 immediately, and gives a stronger
+address clue than anything found for Tempest.** Byte 0 of OB-6's unpacked
+payload is an unambiguous reset stub:
+
+```
+lui $k0, 0x9d0c
+addiu $k0, $k0, 0x4680
+jr $k0
+nop
+```
+
+Unlike Tempest's `jal`-based stub (§5.4, which only encodes 28 of the
+target's 32 bits, forcing a guess at the top nibble), this `lui`+`addiu`
+pair spells out the **full 32-bit target explicitly: `0x9D0C4680`**. This is
+a real, independent confirmation that `0x9D` (KSEG0 cached program flash) is
+the correct segment convention for this whole DSI/Sequential platform -
+previously only an assumption for Tempest, now directly demonstrated on a
+sibling product's own firmware.
+
+Tried to use this to actually pin down a base address: computed the naive
+file offset (`0xC4680` under a `0x9D000000` base) and disassembled there -
+it doesn't land on clean, recognizable code. Swept ±8KB around that offset
+looking for a real function prologue (`addiu $sp,$sp,-N`) - no clear winner,
+same inconclusive shape as every base-address attempt in §5. **This sub-problem
+remains open for OB-6 too, not just Tempest** - the full-address confirmation
+narrows *which segment*, not *where in the file*.
+
+**Also generalizes a Tempest-specific finding into a platform-wide one:**
+searched OB-6's firmware - built in 2024, a vastly newer toolchain than
+Tempest's 2017 build - for the stock XC32 NMI-check preamble (§5.4, §5.5).
+Still absent, same as Mopho and Tempest. **"DSI writes custom startup
+assembly instead of linking the stock library crt0.o" is not a Tempest
+quirk or a toolchain-era artifact - it holds across at least three products
+spanning 2010 to 2024.** This closes the door a little further on ever
+finding a stock-crt0 reference to diff against, for any product in this
+family, not just this one.
+
+**Mopho did not decode cleanly at all.** Tried header lengths 3 through 7
+bytes (in case this older, simpler 2010 product uses a different header
+convention than Tempest/OB-6) - none produced a recognizable reset-stub
+pattern the way Tempest and OB-6 both did immediately. Most likely
+explanation: Mopho, the oldest and simplest product in this lineup, uses a
+genuinely different wire or escape format - not investigated further this
+session given time already spent; a real open question if picked up again,
+not a dead end that's been ruled out.
+
 ## 5. The base address problem
 
 This is the actual blocker. To do anything useful with Ghidra (cross-reference
