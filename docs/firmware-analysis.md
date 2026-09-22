@@ -141,20 +141,77 @@ Treat that specific guess as walked back, not confirmed.
 ## 4. Physical board identification
 
 Real Tempest mainboard photos (found via image search, sourced from a public
-Facebook post "Analog drum synthesizer Tempest by Dave Smith Instruments")
-show the board silkscreened **`DSI-800R Rev 1.2`, `(C) 2010 Dave Smith
-Instruments`**, hosting:
+Facebook post "Analog drum synthesizer Tempest by Dave Smith Instruments" in
+the "I Take Pictures of Electronic Parts" group) show the board silkscreened
+**`DSI-800R Rev 1.2`, `(C) 2010 Dave Smith Instruments`**.
+
+![DSI-800R main board, wide view](images/dsi-800r_main-board_wide.png)
 
 - A chip clearly marked **`dream SAM3716`** - the SAM processor (§2).
 - A chip custom-labeled **`TEMPEST DSP 1.0`** - almost certainly the Voice
   processor (§2), real identity hidden by the re-badge.
+
+![SAM3716 and TEMPEST DSP 1.0 chips, with board revision text](images/dsi-800r_sam-and-voice-dsp.png)
+
 - Six repeated identical small-IC clusters, consistent with the manual's
   "six powerful analog synthesis voices."
-- No chip in these specific photos was legibly marked as a PIC32 variant.
-  Extensive zooming into every visible IC on this particular board didn't
-  turn up the Main/Panel controller's exact part number - it's most likely
-  on a different, unphotographed board (a separate control/panel board), or
-  simply wasn't visible at this photo's resolution/angle.
+
+**A higher-resolution version of the same album was later found and pulled
+directly from the Facebook post (1740x2048, vs. the ~520x320 first-pass
+copy above) - this changed the picture meaningfully:**
+
+![Panel board (top) and main board (bottom), full resolution](images/dsi-800r_panel-and-main-boards_hires.jpg)
+
+This shows there are (at least) **two separate boards** in the unit: a top
+board that is a pure button/LED matrix (rows of pad footprints, a ribbon
+connector, "Do Not Remove Screws" silkscreen, no IC larger than a shift
+register/driver visible anywhere on it) sitting above the main `DSI-800R`
+board seen in the original two photos. **This board is most likely the
+physical pad/keypad panel specifically, not necessarily "the Panel processor
+board" in the SysEx-firmware sense** - if Panel's PIC32 lives on a third,
+still-unphotographed board, or off-frame on one of these two, that's still
+unresolved. Worth remembering next time "Panel" comes up: the firmware name
+and the physical board name may not refer to the same board.
+
+The main board's control-MCU cluster is now visible clearly enough to be
+useful:
+
+![MCU cluster: U45, a dream-branded chip, and an ISSI memory chip](images/dsi-800r_mcu-cluster_zoom.jpg)
+
+- **`U45`** (leftmost chip in the cluster) is the strongest remaining
+  candidate for Main/Panel's PIC32 by position (directly beside the
+  ribbon-cable connector to the panel/button board) and package size.
+- Next to it, a **second `dream`-logo chip** - most likely the same
+  `SAM3716` already identified elsewhere on this board (same board,
+  different framing), not a second distinct part; not fully confirmed
+  either way from this angle.
+- An **`ISSI`-branded memory chip** (Integrated Silicon Solution Inc, a
+  real SRAM/Flash vendor) sits in the same cluster - consistent with a
+  classic "MCU + external SRAM" arrangement, circumstantial support for
+  `U45` being the actual controller rather than an unrelated chip.
+
+**`U45`'s marking is physically hidden, not just hard to photograph:**
+
+![U45 close-up: a paper label is glued directly over the chip's factory marking](images/dsi-800r_u45_label_zoom.jpg)
+
+Zooming into `U45` at full resolution shows the white square isn't a flash
+reflection (the working assumption from the earlier, lower-res photos) - it's
+a **paper label glued directly onto the chip package**, with faint rows of
+printed text on it that are below this photo's legibility floor. This is the
+same playbook already seen on the Voice chip (re-badged "TEMPEST DSP 1.0" on
+the silkscreen) applied differently: here, instead of relabeling in
+silkscreen, DSI covered the chip's own factory-printed marking directly.
+**Practical implication: no clearer photo of this specific unit's `U45` will
+ever reveal the part number** - the marking is physically obscured, not
+merely blurry. A different unit from a different manufacturing batch
+(possibly without the label applied), the label peeled back, or the chip's
+topside markings visible from a raking/angled light photo are the only ways
+this specific angle could still resolve. Reasonable circumstantial evidence
+this deliberate concealment happened *at all* is itself worth noting: DSI
+apparently wanted to obscure their MCU sourcing for both Voice (silkscreen
+re-badge) and, if `U45` really is Main/Panel's PIC32, this chip too (opaque
+label) - suggesting board-level obfuscation was a deliberate choice, not
+incidental.
 
 **Searching for the exact PIC32 part number came up empty, and this looks
 like a real dead end for the search-based approach specifically:**
@@ -162,10 +219,25 @@ like a real dead end for the search-based approach specifically:**
 - `fccid.io` and the FCC's own legacy equipment-authorization search are
   both impractical to query this way (bot walls on the former; the latter's
   legacy form needs a grantee code as a starting point, which isn't known).
+  **Checked the actual manual text directly (not just searched for it): the
+  Tempest's FCC section is only the generic Part 15 Class B "verification"
+  statement, no ID code or grantee code anywhere.** That tier of compliance
+  applies to wired-only devices with no RF transmitter, which typically
+  never receive an individual FCC ID at all - this is likely why the FCC
+  equipment-authorization search came up empty, not a search-quality
+  problem. Treat the FCC-ID angle as structurally closed, not just
+  under-searched.
 - No schematic, service document, or FCC filing is indexed anywhere under
   the exact board revision `"DSI-800R"`.
 - Direct `"PIC32"` + Tempest photo/text searches turn up essentially
   nothing relevant.
+- Checked marketplace/parts sources for board-level photos beyond the one
+  Facebook album: Syntaur has no parts listed for the Tempest at all;
+  Reverb's marketplace search for board/parts listings returns only knobs,
+  rack ears, and unrelated EPROM listings; a YouTube search for
+  teardown/repair content returned only demo and tutorial videos. eBay was
+  not checked past its bot-detection challenge page (not attempted to
+  bypass). None of these turned up a second photographed unit.
 - The 2010 board date does at least confirm the chip must be a **PIC32MX**
   family part, not PIC32MZ (which wasn't released until ~2013) - narrows
   which vector-spacing convention applies, but doesn't give the specific
