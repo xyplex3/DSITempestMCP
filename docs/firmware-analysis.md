@@ -283,7 +283,10 @@ already be identified somewhere the Tempest's isn't.
   DSI service exchange). The thread's own attached photos are dead links
   (2018-era third-party image hosting, since removed) - a checked, real
   dead end for *that specific thread's photos*, not for the underlying fact
-  it confirms.
+  it confirms. **Checked archive.today directly for a cached copy with the
+  images intact, both URL forms (the old `/board/...html` redirect and the
+  canonical `/threads/...` URL) - no snapshot of either exists.** Genuinely
+  closed, not just unfetched.
 - **A ModWiggler teardown thread of a Dave Smith Mopho keyboard** (an
   earlier, simpler DSI product, ~2009) states in plain hobbyist language:
   *"The mainboard, voice + controlling microcontroller (PIC32), is quite
@@ -295,7 +298,13 @@ already be identified somewhere the Tempest's isn't.
   legible part number - **gated behind free ModWiggler forum registration,
   not publicly viewable, so not fetched.** If accessible another way (a
   ModWiggler account), this is a concrete, specific image already known to
-  exist, not a speculative search.
+  exist, not a speculative search. **Also checked archive.today for a cached
+  copy - no snapshot of this specific thread exists, and more tellingly,
+  several other ModWiggler snapshots archive.today *does* have are
+  themselves titled "MOD WIGGLER - Login."** The registration wall applies
+  to archiving crawlers too, so even a cached snapshot of this thread would
+  most likely preserve the login page, not the photo - this angle is closed
+  on both fronts, not just the direct-fetch one.
 - **Sequential hosts official, photographed main-board removal guides** for
   several *current* products (Prophet-5/10, Prophet X/XL) at predictable
   URLs (`sequential.com/<product>-main-board-removal/`) - confirmed no
