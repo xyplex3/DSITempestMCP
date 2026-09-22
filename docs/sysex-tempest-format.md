@@ -1055,6 +1055,70 @@ single verified Beat capture - misleading, kept for the record. Use
 `sysex.SplitMessages` to break either into its 17 individual messages before
 decoding).
 
+### 9.6 Confirmed: both notes are live in RAM, but Export Beat still sends one
+
+The same session pushed further on §9.4's original question with two more
+tests.
+
+**Explicit Beat selection before export didn't fix it.** The manual's own
+procedure for "To Export a Beat from RAM over MIDI" has a step this session
+had been skipping: "In 16 Beats mode, tap a pad to choose the Beat to
+export" - *before* opening Save/Load. Retried the full sequence with this
+step added (Initialize → A1 step 1 → A2 step 2, both confirmed on screen →
+16 Beats → tap the beat pad, confirming its number → Save/Load → Export Beat
+in RAM over MIDI). Two attempts at just reaching this point accidentally
+triggered Export *Project* again instead (same mis-tap as §9.5 - these two
+menu items are clearly easy to confuse under this hardware's Save/Load UI).
+The third attempt genuinely captured a single `0x5F` Export Beat message
+(5933 bytes) - and it still showed exactly **one** note, not two.
+
+**Confirmed via the Beat Events screen that both notes really were live in
+RAM at export time, not just displayed correctly.** Immediately after that
+export, checked the Beat Events screen (`Events` key - a 4x16 grid showing
+multiple sounds' rows at once, a more reliable view than toggling between
+single-sound screens) and both A1's step-1 note and A2's step-2 note were
+visible simultaneously. Since this check happened *after* the export, and
+nothing in the Save/Load export flow should add a note, both notes were
+almost certainly present *during* the export too - not merely a display
+artifact.
+
+**This is a solid, multi-angle-confirmed puzzle at this point, not a
+procedural guess:** the note storage is fine (visually confirmed via a
+different, more trustworthy screen), the MIDI receive path is fine (checked
+`internal/midi/device.go` - a 1MiB SysEx buffer, nowhere near the ~16 extra
+bytes a second note would need, and `gomidi`'s listener reassembles complete
+messages before delivering them), and the export procedure now matches the
+manual exactly. What's left is either a genuine Tempest firmware limitation
+in "Export Beat in RAM over MIDI" specifically, or something about this
+hardware/procedure still not understood.
+
+**Attempted workaround: Save Beat to Flash, then export the saved file.**
+The manual describes a separate path - "Export saved file over MIDI
+(Sound/Beat/Project)" - which reads from flash storage instead of the live
+RAM edit buffer, as a way to test whether the RAM export path specifically
+is where the bug lives. The resulting capture was unexpected: a single
+**`0x61`** message, 95040 bytes - **the first real Project-dump sample this
+project has ever captured**, confirming `0x61` is a real message type after
+all (contrary to §9.5's read that Export Project only ever produces the
+17-message `0x5C`/`0x5E` stream - that's specific to the *RAM* export path;
+exporting a *saved* Project file over MIDI produces `0x61` instead). It
+unescapes cleanly with the standard collector-first scheme (95040 raw bytes
+→ 83155 unpacked bytes, matching the expected ~7/8 ratio), but scanning for
+the confirmed note-record anchor pattern (`0x06 0x00 ?? 0x77`, constant
+across every `0x5F`/`0x5C` single-note capture so far) found **zero hits**,
+and a scan for embedded printable ASCII text found mostly garbled runs (a
+couple of maybe-fragments like `" Bas"`/`"sic "`, possibly part of a factory
+sound name like "Basic Kick," but nothing conclusive). This suggests `0x61`
+either encodes notes completely differently from `0x5F`/`0x5C`, or has more
+internal structure (multiple sub-encoded regions) than a single flat
+collector-first pass can reveal - consistent with this doc's original
+"completely unexplored" status for `0x61`, which turns out to still be
+accurate. Saved as `flash_export_test.syx` in
+`~/Tempest/captures/beat-research/`. Decoding this properly is a
+substantial task on its own, out of scope for continuing tonight's
+multi-note investigation - noted here as a new, real lead for a future
+session, not pursued further.
+
 ---
 
 ## Suggested next steps for this repo
@@ -1083,47 +1147,54 @@ Done as of this session (see §7 and `internal/sysex/`):
 
 Still open, in priority order:
 
-1. **Redo the multi-note Export *Beat* test properly** (§9.4/§9.5) - the
-   "careful, verified" re-attempt accidentally captured via Export *Project*
-   twice in a row (easy to mis-tap; adjacent Save/Load menu items) rather
-   than Export Beat, so the original question - does a correctly-verified
-   A1 step 1 + A2 step 2 Beat export show one note or two? - is still
-   unanswered, not resolved negatively. Redo it, double-checking the
-   Save/Load screen says "Export Beat," not "Export Project," before
-   confirming. If it still loses a note, try the Beat Events screen
-   (`Events` key, row/column soft knobs, explicit Insert/delete) as a
-   different input path than pad-taps.
-2. **Figure out whether Export Project reflects live state** (§9.5) - two
-   Project exports, with a careful fresh Initialize-and-edit cycle in
+1. **Solve the Export Beat single-note puzzle** (§9.4/§9.6) - confirmed
+   multiple ways now, not just a procedural guess: both A1 step 1 and A2
+   step 2 were verified live in RAM via the Beat Events screen immediately
+   after export, the export procedure matches the manual exactly (including
+   the 16-Beats-pad-selection step this session had initially missed), and
+   the MIDI receive path was checked and isn't truncating. Yet Export Beat
+   in RAM over MIDI still only sends one note. Possible next moves: try
+   Export Beat immediately after Save Beat to Flash (does saving first
+   change anything?); try a 2-note beat on the *same* track at two different
+   steps instead of two different tracks (isolates whether it's specifically
+   a multi-*track* problem); or accept this may be a genuine Tempest
+   firmware limitation and look for a documented workaround (a newer OS
+   version's release notes, forum reports, etc.) before assuming it's fixable
+   from this side at all.
+2. **Decode the `0x61` Project format** (§9.6) - a real sample now exists
+   (`flash_export_test.syx`, from "Export saved file over MIDI" on a
+   flash-saved Project, *not* the RAM export path used by §9.5's 17-message
+   finding - these are two different `0x61`-vs-`0x5C`/`0x5E` export paths for
+   what is nominally the same "Project" concept). It unescapes cleanly with
+   the standard scheme but doesn't contain the confirmed note-record anchor
+   pattern anywhere, and mostly garbled embedded text - `0x61` likely has
+   real internal structure beyond a single flat collector-first pass.
+   Completely unstarted beyond this session's brief anchor/text scan; a
+   substantial task on its own.
+3. **Figure out whether Export Project (RAM) reflects live state** (§9.5) -
+   two Project exports, with a careful fresh Initialize-and-edit cycle in
    between, came back byte-identical except for 2 velocity-noise bytes, as
    if the edits weren't seen at all. Worth an explicit test: make one
    deliberate, large, unmistakable change (e.g. a note on A16 instead of
    A1), verify it on screen, then Export Project immediately - if it still
    doesn't show up, Export Project likely isn't reading the live edit
    buffer the way Export Beat does.
-3. **Validate §9's note-record theory further** - once multi-note capture
-   works, confirm the linear track index holds at a higher index or across
-   the A/B bank boundary, and check whether records concatenate as simple
-   consecutive 10-byte blocks the way §9's "sparse list" theory predicts.
-4. **Decode the still-unknown constant bytes in the note record** (offsets
+4. **Validate §9's note-record theory further** - once the Export Beat
+   puzzle (item 1) is solved, confirm the linear track index holds at a
+   higher index or across the A/B bank boundary, and check whether records
+   concatenate as simple consecutive 10-byte blocks the way §9's "sparse
+   list" theory predicts.
+5. **Decode the still-unknown constant bytes in the note record** (offsets
    1077, 1078, 1080, 1083-1086, §9.2) - untested against anything that might
    vary them, like gate length or which sound is assigned to the pad.
-5. **Isolate the velocity field** (`0x043A`, §7.4/§9.2) - needs a
+6. **Isolate the velocity field** (`0x043A`, §7.4/§9.2) - needs a
    numeric-entry method instead of live pad taps, if one exists.
-6. ~~Independently verify the 0x5C/0x5E scheme~~ - partially done, see §9.5:
+7. ~~Independently verify the 0x5C/0x5E scheme~~ - partially done, see §9.5:
    real `0x5C`/`0x5E` samples now exist (from Export Project's 17-message
    structure) and decode cleanly with the same collector-first scheme and
    the same byte offsets as `0x5F`. Not a full confirmation - no controlled
    single-variable test was run against `0x5C`/`0x5E` specifically - but no
    longer purely an assumption either.
-7. **Investigate the RAM (0x60) name field** - §4's bit-offset-880 theory
+8. **Investigate the RAM (0x60) name field** - §4's bit-offset-880 theory
    didn't hold up against 30 real captures; still unknown where (or if) RAM
    dumps carry a name.
-8. ~~Capture and decode a real Project (0x61) dump~~ - superseded, see §9.5:
-   "Export Project in RAM over MIDI" does not send a `0x61` message at all
-   on real hardware. It sends 17 separate messages - one `0x5E` header plus
-   sixteen `0x5C` per-beat messages - contradicting this doc's original
-   `PROJECT_FILE_TYPE = 0x61` assumption (§1) for what this specific export
-   action produces. Whether `0x61` is used for some *other* action (a
-   different kind of backup/dump) is still unknown and would need its own
-   investigation if it matters.
