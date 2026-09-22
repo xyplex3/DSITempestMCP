@@ -943,18 +943,46 @@ identity isn't positional here.
   once more at a higher index (e.g. A16, or crossing into bank B at B1) to
   rule out a non-linear encoding (bank bit, wraparound, etc.) that only three
   low, consecutive values couldn't reveal.
-- Only single-note beats tested. Whether multiple active notes are stored as
-  simple consecutive 10-byte records (the simplest version of the "sparse
-  list" theory) - and if so, in what order (insertion order? step order?) -
-  is untested. A 2-note capture (e.g. A1 step 1 + A2 step 2) is the natural
-  next test: it should show the payload grow by exactly 160 bits (2 x 80)
-  if the theory holds, and `bitdiff` should find two clean 80-bit insertions.
+- Only single-note beats tested - see §9.4, a same-session attempt at a
+  2-note beat, which didn't produce two notes and is an open problem, not
+  yet a confirmed dead end.
 - The four constant-across-all-3-captures bytes (1077, 1078, 1080, and the
   1083-1086 block) are unexplained. They didn't vary in these tests because
   nothing that might affect them (gate length, note duration, which sound is
   assigned to the pad, etc.) was varied. Worth a capture that changes one of
   those while holding track/step fixed, once a hypothesis for what they might
   encode is worth testing.
+
+### 9.4 Dead end (so far): adding a second note via pad-taps loses the first
+
+Immediately after §9.1-9.3, the same session tried the natural next test: one
+note on A1 step 1, a second on A2 step 2, in the same beat, to check whether
+the payload grows by 160 bits (2 x 80) as the "sparse list of note records"
+theory predicts. Procedure: Initialize Beat → 16 Sounds → tap A1 → 16 Time
+Steps → tap step 1 → 16 Sounds → tap A2 → 16 Time Steps → tap step 2 →
+export. This was tried **three times**, twice with playback (`Play`)
+confirmed not running, and every time the exported beat had exactly **one**
+note, not two - specifically, whichever note was added *last* survived, and
+the first one was gone. Pad table stayed byte-identical to baseline in every
+attempt, ruling out sound-assignment corruption as the cause.
+
+This contradicts the Tempest manual's own description of 16 Time Steps
+("a lit pad indicates the presence of a note *of the selected sound*",
+implying independence per sound), so it's more likely a procedural issue
+with this session's approach than a fact about the hardware. The manual
+describes a separate **Beat Events** screen (`Events` key) - a 4x16 grid
+showing up to four sounds' step patterns at once, with row/column selected
+by soft knobs and an explicit **Insert**/delete soft-key action for placing
+a note, rather than needing to tap a sound pad to change which sound is
+"selected." That's a meaningfully different input path from repeated
+16 Sounds/16 Time Steps pad-taps and untested as of this session - it's the
+natural next thing to try, not yet attempted for lack of time.
+
+The one capture from this dead end is saved as
+`kick_a2_s2_fresh_multinote_attempt.syx` in
+`~/Tempest/captures/beat-research/` - despite the name implying two notes,
+**it verified as exactly one note** (A2, step 2) via `capture-tmp`. Kept for
+the record, not to be treated as a 2-note reference.
 
 ---
 
@@ -984,21 +1012,27 @@ Done as of this session (see §7 and `internal/sysex/`):
 
 Still open, in priority order:
 
-1. **Validate §9's note-record theory further** - confirm the linear track
-   index holds at a higher index or across the A/B bank boundary, and test a
-   multi-note capture to check whether records really do concatenate as
-   simple consecutive 10-byte blocks (see §9's caveats for the exact tests).
-2. **Decode the still-unknown constant bytes in the note record** (offsets
+1. **Solve the multi-note capture problem** (§9.4) - adding a second note on
+   a different track via 16 Sounds/16 Time Steps pad-taps loses the first
+   note, three times in a row, even with playback confirmed off. Try the
+   Beat Events screen (`Events` key, row/column soft knobs, explicit
+   Insert/delete) instead of pad-taps before assuming anything about how
+   (or whether) multiple notes concatenate in the sequencer region.
+2. **Validate §9's note-record theory further** - once multi-note capture
+   works, confirm the linear track index holds at a higher index or across
+   the A/B bank boundary, and check whether records concatenate as simple
+   consecutive 10-byte blocks the way §9's "sparse list" theory predicts.
+3. **Decode the still-unknown constant bytes in the note record** (offsets
    1077, 1078, 1080, 1083-1086, §9.2) - untested against anything that might
    vary them, like gate length or which sound is assigned to the pad.
-3. **Isolate the velocity field** (`0x043A`, §7.4/§9.2) - needs a
+4. **Isolate the velocity field** (`0x043A`, §7.4/§9.2) - needs a
    numeric-entry method instead of live pad taps, if one exists.
-4. **Independently verify the 0x5C/0x5E scheme** - still just assumed
+5. **Independently verify the 0x5C/0x5E scheme** - still just assumed
    uniform with everything else (§3), never decoded from real 0x5C/0x5E
    content the way FLASH/RAM/Beat were.
-5. **Investigate the RAM (0x60) name field** - §4's bit-offset-880 theory
+6. **Investigate the RAM (0x60) name field** - §4's bit-offset-880 theory
    didn't hold up against 30 real captures; still unknown where (or if) RAM
    dumps carry a name.
-6. **Capture and decode a real Project (0x61) dump** - zero examples exist
+7. **Capture and decode a real Project (0x61) dump** - zero examples exist
    in this project's entire sample library (`~/Tempest`, `~/Tempest/captures`);
    completely unexplored.
