@@ -352,18 +352,20 @@ the DSI Tempest's undocumented sequencer byte layout:
 
 **Beat pattern writing** (`tempest_decode_project_beats`, `tempest_write_beat`,
 `tempest_clear_beat`) requires knowing exactly how a beat's active notes are
-stored in a Beat/Kit (0x5F) export. The **single-note case is now confirmed**
+stored in a Beat/Kit (0x5F) export. The **single-note case is confirmed**
 (`docs/sysex-tempest-format.md` §9): each active note is an 80-bit (10-byte)
 record starting at absolute unpacked-payload byte 1077, with a confirmed step
 position, a confirmed track-identity byte (`0x80 | 0-based track index`, not
 a positional offset the way earlier sessions assumed), and a known-but-noisy
-velocity byte. What's still blocking a real implementation: **how multiple
-simultaneous notes are laid out is unresolved** - three attempts at a 2-note
-beat all lost one of the two notes, and it's unclear whether that's a capture
-procedure issue or something deeper (see §9.4/§9.5, including an open puzzle
-about whether Export Project reflects live state at all). Until that's
-sorted out, there's no way to read or write a beat with more than one note
-without risking data loss.
+velocity byte. **The container format is now confirmed capable of holding
+multiple notes** - three existing captures show two different tracks as
+clean, correctly-formed consecutive 10-byte records (see §9.7). But the
+obvious follow-up guess ("same/adjacent step is what makes it work") doesn't
+hold up: one of those three has the same step-delta as the original failing
+test, so step-delta alone isn't the distinguishing factor, and none of the
+three were captured under today's verified-clean methodology - they may not
+even be controlled tests. Until a real controlled test isolates what
+actually causes note loss, still too risky to implement multi-note writing.
 
 **Named sound parameter reading** (`tempest_read_sound_params`) is now
 available: the parameter offset table (`internal/sysex/soundparams.go`) was

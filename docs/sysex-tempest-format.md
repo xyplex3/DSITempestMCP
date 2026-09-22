@@ -1133,6 +1133,78 @@ actually read the code - see
 **[docs/firmware-analysis.md](firmware-analysis.md)** for the full state,
 what's been tried, and what would unblock it.
 
+### 9.7 Correction (2026-09-22, later session): §9.4-9.6's "always loses the second note" conclusion is wrong
+
+A later session re-examined the existing capture library (not new hardware
+captures - files already sitting in `~/Tempest/captures/beat-research/`
+from earlier in this same investigation) and found direct counter-evidence:
+**three files each contain two complete, valid 80-bit note records, not
+one.**
+
+`kick_a2_s1.syx`, `kick_a2_s1_samesound.syx`, and
+`kick_a2_s1_samesound_msg0.syx` are all exactly 5941 bytes
+(`5925 + 8*2` - the confirmed size for 2 notes, per §7.3). Decoding them
+with the record layout already confirmed in §9.1-9.3 (80-bit records
+starting at byte 1077, track byte at relative offset 4, step at relative
+offset 2, velocity at relative offset 5) gives two clean, well-formed
+records in every case:
+
+| File | Record 1 | Record 2 |
+|---|---|---|
+| `kick_a2_s1.syx` | Track A1 (`0x80`), step 1, vel 11 | Track A2 (`0x81`), step 1, vel 78 |
+| `kick_a2_s1_samesound.syx` | Track A1, step 17, vel 44 | Track A2, step 18, vel 91 |
+| `kick_a2_s1_samesound_msg0.syx` | Track A1, step 17, vel 44 | Track A2, step 17, vel 62 |
+
+Both records in all three files have the confirmed `0x77` marker at exactly
+the expected relative offset and plausible track/step/velocity values -
+this is not a coincidental byte-pattern match, it's the same structure
+already validated on dozens of single-note captures, just appearing twice
+per file here.
+
+**Tempting but wrong first read: "same/adjacent step works, distant step
+fails."** Two of the three working files have identical steps (A1/A2 both
+step 1); the third has steps 17 and 18 - a delta of exactly 1. The original
+§9.4 failure was A1 step 1 + A2 step 2 - also a delta of exactly 1. **Same
+track pair, same step delta, opposite outcomes** - a "same or adjacent
+step" rule cannot be the actual distinguishing factor, since a delta-1 case
+sits in both the working and the failing column. Caught this after an
+initial draft of this section stated the adjacent-step theory more
+confidently than the evidence actually supports - worth remembering as a
+lesson on this specific finding, not just a footnote.
+
+**A second, more likely explanation: these three files may not be
+controlled tests at all.** All three predate the capture-tmp verification
+tool and the confirmed-clean-baseline methodology established later in §9 -
+`kick_a2_s1.syx` is timestamped during the §7 live session (2026-09-20),
+and the two `*_samesound*` files are from early on 2026-09-21, before
+session 3's methodology tightening. §7.5 and §8.2, written about this exact
+window, explicitly document stray/leftover notes silently contaminating
+captures and the step-edit view silently scrolling to the wrong bar as
+live, acknowledged problems at the time - not settled ground truth. There's
+no contemporaneous record confirming these three files were deliberate,
+verified two-note tests rather than accidental contamination catches of
+exactly the kind §7.5 already describes happening in this same window.
+
+**What actually stands, and what doesn't:**
+
+- **Stands**: the Beat/Kit container format can hold two valid, well-formed
+  note records back to back - a real structural fact, decoded directly
+  against the layout already confirmed in §9.1-9.3, not inferred.
+- **Does not yet stand**: any rule for *when* two-note export reliably
+  works (same step, adjacent step, or otherwise). That needs a deliberately
+  controlled test under the current rigorous methodology (fresh Initialize
+  Beat, capture-tmp verifying note count and bar before trusting the
+  result, confirmed-zero-notes baseline) - specifically: two tracks at the
+  *same* step, and separately the *same* track at two different steps, to
+  isolate which dimension (if either) actually causes loss. Neither has
+  been run under today's methodology yet.
+
+**Practical effect on §9.6's conclusion:** "accept this may be a genuine
+Tempest firmware limitation" was premature either way - the format
+demonstrably can carry two notes, in files that exist right now. But
+exactly when it does and doesn't is still open, and the honest state is
+"we have proof it's possible, not a rule for when it's reliable."
+
 ---
 
 ## Suggested next steps for this repo
@@ -1161,20 +1233,22 @@ Done as of this session (see §7 and `internal/sysex/`):
 
 Still open, in priority order:
 
-1. **Solve the Export Beat single-note puzzle** (§9.4/§9.6) - confirmed
-   multiple ways now, not just a procedural guess: both A1 step 1 and A2
-   step 2 were verified live in RAM via the Beat Events screen immediately
-   after export, the export procedure matches the manual exactly (including
-   the 16-Beats-pad-selection step this session had initially missed), and
-   the MIDI receive path was checked and isn't truncating. Yet Export Beat
-   in RAM over MIDI still only sends one note. Possible next moves: try
-   Export Beat immediately after Save Beat to Flash (does saving first
-   change anything?); try a 2-note beat on the *same* track at two different
-   steps instead of two different tracks (isolates whether it's specifically
-   a multi-*track* problem); or accept this may be a genuine Tempest
-   firmware limitation and look for a documented workaround (a newer OS
-   version's release notes, forum reports, etc.) before assuming it's fixable
-   from this side at all.
+1. **Isolate exactly when the Export Beat note loss happens** (§9.4/§9.6,
+   corrected by §9.7) - no longer "does this work at all," since §9.7 found
+   three existing captures where Export Beat correctly carried two notes on
+   two different tracks. But the obvious follow-up theory ("same/adjacent
+   step is the difference") doesn't hold up: one of those three working
+   files has the exact same step-delta (1) as the original failing test, so
+   step-delta alone can't be what's distinguishing them - and none of the
+   three were captured under today's verified-clean methodology, so they
+   may not even be controlled tests. Concrete next test, under the current
+   rigorous methodology (fresh Initialize Beat, capture-tmp verification of
+   note count and bar before trusting anything): two tracks at the *same*
+   step, and separately the *same* track at two different steps, to
+   actually isolate which dimension (if either) causes the loss - neither
+   has been run under controlled conditions yet. Also still worth trying:
+   Export Beat immediately after Save Beat to
+   Flash (does saving first change anything?).
 2. **Decode the `0x61` Project format** (§9.6) - a real sample now exists
    (`flash_export_test.syx`, from "Export saved file over MIDI" on a
    flash-saved Project, *not* the RAM export path used by §9.5's 17-message
