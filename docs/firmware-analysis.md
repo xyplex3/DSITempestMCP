@@ -263,14 +263,46 @@ were tried, and none succeeded:**
    the real dispatch uses a different pattern (a computed jump table indexed
    by the type byte is plausible for a 6+-way switch), the search window was
    too narrow, or it genuinely wasn't found this way.
+7. **Jump-table verification - the most rigorous attempt, and the most
+   conclusively negative.** Once the toolchain was confirmed as XC32/GCC
+   (§5.3), reasoned that a multi-way `switch` (exactly what SysEx dispatch,
+   or any similar command dispatch, would compile to) typically becomes a
+   **jump table** in GCC-generated code, not a sequence of comparisons -
+   explaining why item 6 found nothing. Searched for the specific compiled
+   idiom (`sll $reg,$idx,2` immediately followed by an indirect `jr`) - a
+   highly selective pattern, only 10 candidates in the whole 525KB file.
+   Disassembling the most promising one (file offset `0x3d0`, very close to
+   the trusted early-code region) found a genuine, textbook GCC jump table:
+   a range check against 40 cases, a `lui`+`addiu` computing a table base
+   address, an indexed load, and an indirect jump - unambiguous real
+   dispatch code, the clearest structure found all night. **Verified
+   whether the table's ~40 entries resolve to valid in-file addresses - a
+   much stronger test than anything before, since it requires many entries
+   to check out simultaneously, not just one:** 0/40 under the standing
+   `0x9D000000` assumption; a coarse full-range sweep (`0x80000000` to
+   `0xC0000000`, every 4KB) found no base reaching even 5/40; a fine
+   4-byte-resolution sweep across ±128KB around the trusted base found only
+   6/40 at best, with no sharp peak. **Reframed to be exhaustive**: instead
+   of sweeping candidate base *addresses* (unbounded), swept every possible
+   file *position* the table could occupy - bounded by the file's own size
+   (~131,000 word-aligned positions), covering literally every base for
+   which the table could sit anywhere inside this file. Vectorized with
+   `numpy`. **Zero positions in the entire file reach even 10/40 valid
+   entries.** This is exhaustive, not "didn't search wide enough" - there is
+   no wider window left to try for this specific table under this specific
+   validity model. Most likely explanation: this jump table's entries
+   aren't simple absolute pointers the way assumed (XC32/GCC can compile
+   PIC-style jump tables with PC-relative deltas instead, in some
+   configurations - untested) - or this particular 40-case dispatch has
+   nothing to do with SysEx types at all.
 
 **What this consistent pattern of failure suggests:** not that any single
 attempt was almost right, but that blind statistical correlation over a raw
 firmware blob doesn't have enough structure to solve this without a real
 linker map, debug symbols, or confirmed code/data segment boundaries. Further
-variations on the same class of technique are unlikely to succeed where six
-already haven't - this is now a considered conclusion, not something to
-re-attempt without new input.
+variations on the same class of technique are unlikely to succeed where
+seven already haven't, the last one exhaustively - this is now a considered
+conclusion, not something to re-attempt without new input.
 
 ### 5.1 The error-message string table
 
@@ -336,13 +368,55 @@ not one real English word in any of them, at any length threshold tried.
 
 This is a real, informative negative result, not a failed search: **the
 Tempest's on-screen menu text is not stored as plain readable strings in any
-of these four OS update files.** Plausible explanations, none confirmed:
-it's compressed, it's rendered from a bitmap/glyph-index font table rather
-than literal text, or it lives in some on-device resource area that OS
-*updates* specifically don't touch (as opposed to a one-time factory
-flash). Worth remembering as an open question if UI text ever becomes
-relevant again, but not pursued further - it doesn't bear on the Export
-Beat / sequence-data goal that motivates this investigation.
+of these four OS update files.**
+
+A follow-up session tested two specific encoding hypotheses for where that
+text actually lives, both cleanly ruled out:
+
+- **Hex-encoded text/identifiers.** Searched Main's firmware for long runs
+  of pure hex-digit ASCII bytes (`0-9A-Fa-f`), which would indicate
+  hex-encoded strings or build identifiers. Zero runs of 8+ consecutive
+  hex-digit bytes found anywhere in the file.
+- **UTF-16 encoding.** Microchip's **Graphics Composer** tool (part of
+  MPLAB Harmony / the Microchip Graphics Library - a real, documented
+  "String and Font interface" plus "Asset Manager," built for exactly this
+  kind of embedded-LCD UI) commonly stores localizable UI strings as UTF-16
+  rather than 8-bit ASCII, which would explain why a plain `strings` scan
+  (looking for 8-bit character runs) found nothing even if the text were
+  otherwise literal. Wrote a manual UTF-16LE/BE scanner and ran it against
+  both Main and Panel in both byte orders - **zero hits, every combination.**
+
+**Current best explanation, not confirmed:** the UI text is most likely
+stored via Graphics Composer's own **proprietary compiled-asset format**
+(documented to exist - it compiles imported strings and fonts into a binary
+asset format, not plain string literals) rather than any of the byte-level
+text encodings tested here. Decoding that specific format would need its
+own dedicated research effort and isn't obviously worth it for this
+project's actual goal - the Export Beat / sequence-data code already lives
+in one of Main's plain-text-readable regions, so this doesn't block that
+work. Worth remembering as an open question if UI text ever becomes
+directly relevant.
+
+### 5.3 Toolchain era, confirmed
+
+Researched what PIC32 development actually looked like at the time the
+Tempest was built, since assumptions about the toolchain (linker
+conventions, standard library behavior) underpin several of the guesses
+above. **Confirmed via Microchip's own documentation:** in 2010 (the
+Tempest mainboard's silkscreen date, §4), PIC32 development used **C**,
+compiled with Microchip's **MPLAB C32** compiler, inside the original
+**MPLAB IDE v8.x** (native Windows, predating the NetBeans-based MPLAB X).
+Microchip's unified **XC32** compiler and **MPLAB X IDE** became standard
+around 2011-2012 - there was no XC32 yet in 2010, and no official C++
+support.
+
+This matters for dating the specific binary analyzed here: `Tempest_Main
+OS 1.5.0.2` was uploaded by Sequential in **2017**, well after Microchip
+moved on from C32. It was almost certainly built with the newer XC32
+toolchain, not the original 2010-era C32 - which validates (rather than
+merely assumes) the XC32/MPLAB-X-era conventions this investigation has
+been relying on elsewhere (e.g. the `procdefs.ld`-style linker script
+layout in §5).
 
 ## 6. Tooling reference (for picking this back up)
 
@@ -379,27 +453,38 @@ needed:
 
 In priority order, given everything above:
 
-1. **Check whether the Internet Archive is back up**, and if so, search for
+1. **Get XC32's actual runtime/startup source and compare it directly
+   against Main's and Panel's early code, rather than inferring the
+   sequence by guessing.** XC32 is GCC-derived, so Microchip is obligated
+   (GPL) to provide source for the GCC-derived runtime, including the
+   startup code every PIC32 program uses - the exact code this
+   investigation has been trying to infer all night. Categorically
+   stronger than any of the seven binary-only attempts in §5, since it's a
+   direct comparison against a real reference instead of statistical
+   inference. **In progress as of this session** - downloading the XC32
+   compiler's macOS archive (`xc32-v6.00-full-install-osx.tar.xz`,
+   Microchip's own official distribution) to extract its runtime source
+   directly, without needing to run the full installer/IDE.
+2. **Check whether the Internet Archive is back up**, and if so, search for
    an older `Tempest_Main_*.syx` release to diff against `1.5.0.2`'s header
-   (§5, item 3) - the cheapest remaining idea, confirmed still blocked by a
-   genuine, ongoing outage across two separate checks in this session (not
-   a bot-block, a real "temporarily offline" response even from the raw
-   API).
-2. **Look specifically for a legible photo of Panel's board** - smaller and
+   (§5, item 3) - confirmed still blocked by a genuine, ongoing outage
+   across two separate checks in this session (not a bot-block, a real
+   "temporarily offline" response even from the raw API).
+3. **Look specifically for a legible photo of Panel's board** - smaller and
    likely less crowded than the analog voice board already found, and per
    §3, whatever chip it uses answers the question for Main too. Two more
    targeted image-search attempts in this session found nothing - this
    angle looks exhausted for query variations specifically, not just
    under-tried; a different source (community, service manual) is more
    likely to help than another search.
-3. **Ask directly in the Tempest hacking community** (the long-running
+4. **Ask directly in the Tempest hacking community** (the long-running
    Gearspace thread, or similar forums) whether anyone has already
    identified the exact PIC32 part or has schematics/service documentation.
    Not yet attempted - this session only searched, never posted a question.
-4. Only after one of the above provides real new information, revisit
+5. Only after one of the above provides real new information, revisit
    cross-referencing the firmware's `"Failed to read sequence data"` and
    related strings back to their calling code - that was always the actual
-   goal, not base-address-hunting for its own sake. Six independent
-   correlation/search techniques have now been tried without success (§5);
-   further variations on the same approaches are unlikely to succeed where
-   six already haven't.
+   goal, not base-address-hunting for its own sake. Seven independent
+   correlation/search techniques have now been tried without success (§5),
+   the last one exhaustively; further variations on the same approaches are
+   unlikely to succeed where seven already haven't.
