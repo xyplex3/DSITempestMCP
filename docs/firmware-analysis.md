@@ -243,6 +243,79 @@ like a real dead end for the search-based approach specifically:**
   which vector-spacing convention applies, but doesn't give the specific
   variant.
 
+**Two possible physical debug-access points spotted in the hi-res photo,
+neither confirmed:**
+
+- A **6-pin single-row header labeled "P4"**, positioned directly beside
+  `U45` and its neighboring `dream`-logo chip - i.e. right where you'd route
+  short traces for an in-circuit debug connection to the MCU cluster. Six
+  pins matches Microchip's standard ICSP header count exactly (`MCLR`,
+  `VDD`, `VSS`, `PGD`, `PGC`, plus one more, often `AVDD` or NC). No
+  pin-label silkscreen legible at this photo's resolution to confirm the
+  signal names.
+- An **RJ11/RJ12-style modular jack** (6 gold contacts) on the panel/button
+  board, mounted right where the inter-board ribbon cables also connect.
+  Genuinely ambiguous from a photo alone - could be a compact internal
+  wiring-harness connector (common in consumer gear, e.g. to a separate
+  display sub-board), or could be a service/debug port using a phone-jack
+  shell instead of a pin header (PIC32's 2-wire ICSP plus power/ground fits
+  comfortably in 6 conductors, so this isn't implausible either).
+
+**If physical access to a unit is available, this is a categorically
+stronger path than anything else in this section**: continuity-testing
+either connector against the known PIC32 ICSP pinout with a multimeter, or
+simply trying a PICkit/ICSP programmer against "P4" directly, would read the
+chip's device ID straight from silicon - settling the exact part number
+outright - and could enable a full flash dump with real, hardware-reported
+addresses, bypassing the entire base-address problem in §5 rather than
+solving it computationally.
+
+### 4.1 DSI reused this control platform across other products - a real, independent lead
+
+The Tempest is not the only DSI/Sequential product built around a PIC32
+control board, and some of the others are far more actively discussed and
+modded by the community than the Tempest is - meaning their exact chip may
+already be identified somewhere the Tempest's isn't.
+
+- **A Gearspace repair thread confirms the OB-6 and Prophet-6 "share the
+  same architecture"** at the main-board level (the poster replaced a
+  failed OB-6 mainboard - which also carries the USB port - under a $25
+  DSI service exchange). The thread's own attached photos are dead links
+  (2018-era third-party image hosting, since removed) - a checked, real
+  dead end for *that specific thread's photos*, not for the underlying fact
+  it confirms.
+- **A ModWiggler teardown thread of a Dave Smith Mopho keyboard** (an
+  earlier, simpler DSI product, ~2009) states in plain hobbyist language:
+  *"The mainboard, voice + controlling microcontroller (PIC32), is quite
+  small. A dsPIC seems to be used for the DCOs."* This independently
+  corroborates PIC32 as DSI's standard control MCU choice well outside just
+  the Tempest, from a source with no connection to this investigation. The
+  thread has an attached close-up main-board photo (`IMG_3504.jpg`,
+  captioned "close-up of the main board") that could plausibly show a
+  legible part number - **gated behind free ModWiggler forum registration,
+  not publicly viewable, so not fetched.** If accessible another way (a
+  ModWiggler account), this is a concrete, specific image already known to
+  exist, not a speculative search.
+- **Sequential hosts official, photographed main-board removal guides** for
+  several *current* products (Prophet-5/10, Prophet X/XL) at predictable
+  URLs (`sequential.com/<product>-main-board-removal/`) - confirmed no
+  equivalent page exists for the Tempest (`sequential.com/tempest-main-board-removal/`
+  404s, and a site search for "tempest main board" returns nothing
+  relevant), consistent with the Tempest being long discontinued and
+  outside their current support-doc priorities. Worth checking the *current*
+  product guides' own photos for a legible PIC32 if the goal shifts from
+  "identify Tempest's exact chip" to "identify DSI's standard chip across
+  the whole platform lineage" - not done this session, since the Prophet-5/10
+  reissue postdates the Tempest by roughly a decade and may use a different
+  chip generation even if architecturally similar in spirit.
+
+**Practical implication:** if asking in the Tempest-specific Gearspace
+thread (§7) doesn't get a response, the OB-6/Prophet-6/Mopho communities are
+larger, more active, and more likely to have already done this identification
+
+- worth asking there too, framed as "what control MCU does the OB-6/Prophet-6
+use" rather than Tempest-specifically, given the shared-architecture claim.
+
 ## 5. The base address problem
 
 This is the actual blocker. To do anything useful with Ghidra (cross-reference
@@ -550,6 +623,55 @@ more mileage left in chasing the *stock* `_startup` target specifically -
 whatever function the `jal` actually calls is Sequential's own code, with no
 public reference to compare it against.
 
+### 5.5 Vendor/library signature search - a different question than base
+
+address, also negative
+
+Not another base-address attempt - a separate check for whether any
+identifiable third-party chip or USB stack leaves a recognizable signature
+(a name string, a register constant, a descriptor structure) anywhere in the
+firmware, which could help independently of solving addressing.
+
+**Chip-driver strings.** Searched all four firmware string dumps for the
+brand name of every chip legible in the board photos (§4) - `ISSI`, `dream`/
+`SAM37`, `PIC32`/`Microchip`/`XC32` - plus a broad sweep of other likely
+memory/codec vendor names (Winbond, Micron, Atmel, Cirrus, Wolfson, etc.) in
+case of a surprise match. **Zero hits, anywhere, for any of them.** This is
+the expected result, not a surprising one: driver code for a memory-mapped
+external SRAM chip is normally just direct register/bus access with no
+descriptive strings, unlike a USB stack or RTOS that logs debug messages -
+and the `dream`/`ISSI` chips are separate silicon with their own firmware
+images, so there'd be no reason for their names to appear inside Main's or
+Panel's string table regardless.
+
+**USB code.** Main's firmware does contain one genuine, DSI-authored string
+confirming USB-related application code exists: `"USB not connected"`. But:
+
+- No Microchip USB-stack internal strings anywhere (`endpoint`, `descriptor`,
+  `MCHPFSUSB`, class-specific terms) - consistent with either debug strings
+  being compiled out of a release build, or a minimal custom USB layer
+  rather than the full Microchip Application Library stack.
+- Searched the raw bytes of all four files directly for an actual **USB
+  device descriptor structure** - its first several fields are tightly
+  constrained (`bLength=0x12`, `bDescriptorType=0x01`, a valid `bcdUSB`
+  value, a valid `bMaxPacketSize0`), so a real match would be a strong,
+  base-address-independent anchor, and would hand over the real
+  `idVendor`/`idProduct` directly. Checked both strictly and with the
+  constraints loosened - **zero real matches in any file** (120 raw `12 01`
+  two-byte coincidences exist in Main alone, expected given how common those
+  byte values are in MIPS instruction encoding, but none are followed by a
+  plausible USB version field).
+- Checked the public `usb.ids` database and general web search for a
+  documented DSI/Sequential/Tempest USB vendor ID - no match. DSI most
+  likely never registered their own VID (a real cost many small
+  manufacturers skip), which also explains why there was nothing to
+  pattern-match against even if a descriptor had been found.
+- **Most likely explanation**: the USB descriptor table is probably built
+  programmatically in code (byte-by-byte) rather than stored as a literal
+  byte sequence, or it lives in a factory-provisioned/bootloader region not
+  included in these field-updatable `.syx` OS images at all - similar to why
+  the full reset/exception vector table isn't fully present either (§5.4).
+
 ## 6. Tooling reference (for picking this back up)
 
 None of this is committed to the repo (it's general-purpose reverse
@@ -608,13 +730,29 @@ In priority order, given everything above:
 4. **Ask directly in the Tempest hacking community** (the long-running
    Gearspace thread, or similar forums) whether anyone has already
    identified the exact PIC32 part or has schematics/service documentation.
-   **Not yet attempted - this session only searched, never posted a
-   question. With items 1-3 all now closed out or blocked by external
-   circumstance, this is the highest-value remaining lever**: it's the one
-   option that doesn't depend on finding a document or a service that's
-   currently down, and it directly targets the two things actually needed
-   (exact PIC32 part number, or someone who's already solved this).
-5. Only after one of the above provides real new information, revisit
+   A post was drafted this session (reviewed for LLM-tell vocabulary,
+   clean) and submitted by the user - **now pending a response.**
+5. **Test the "P4" header and/or the RJ-style jack found on the board
+   photos (§4) against the known PIC32 ICSP pinout, if physical access to a
+   unit is possible.** Not yet attempted - found via photo inspection only
+   this session, never physically tested. **This is now the single
+   strongest lead in this whole document**: unlike every computational
+   attempt in §5, a real ICSP connection reads the chip's device ID
+   directly from silicon (settling the exact part number outright, no
+   inference needed) and can potentially dump flash with real,
+   hardware-reported addresses - bypassing the base-address problem
+   entirely rather than solving it. Start with a multimeter continuity
+   check against `MCLR`/`VDD`/`VSS`/`PGD`/`PGC` before risking a programmer
+   connection.
+6. **Ask in the OB-6/Prophet-6/Mopho communities too, not just
+   Tempest-specific ones** (§4.1) - a Gearspace thread confirms OB-6 and
+   Prophet-6 share the same main-board architecture, and a ModWiggler
+   thread independently confirms PIC32 on the Mopho keyboard, with a
+   close-up main-board photo attached that's gated behind free forum
+   registration (not fetched this session). These communities are larger
+   and more active than the Tempest-specific one; the same question framed
+   around the more popular product may get an answer faster.
+7. Only after one of the above provides real new information, revisit
    cross-referencing the firmware's `"Failed to read sequence data"` and
    related strings back to their calling code - that was always the actual
    goal, not base-address-hunting for its own sake. Eight independent
