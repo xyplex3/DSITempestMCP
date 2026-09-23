@@ -826,7 +826,13 @@ In priority order, given everything above:
    registration (not fetched this session). These communities are larger
    and more active than the Tempest-specific one; the same question framed
    around the more popular product may get an answer faster.
-7. Only after one of the above provides real new information, revisit
+7. **Run the cheap programmatic-dump-request tests (§8)** - the standard
+   MIDI universal request shapes and the DSI-style `0x2D` family, plus bare
+   type bytes sent as requests. Never explicitly tested; 15 minutes with
+   the hardware connected, no risk. Any response kills the "cannot be
+   queried programmatically" claim and upgrades the whole MCP tooling; no
+   response confirms the firmware-hook path is the only road.
+8. Only after one of the above provides real new information, revisit
    cross-referencing the firmware's `"Failed to read sequence data"` and
    related strings back to their calling code - that was always the actual
    goal, not base-address-hunting for its own sake. Eight independent
@@ -834,15 +840,86 @@ In priority order, given everything above:
    success (§5), several exhaustively or conclusively; further variations
    on the same approaches are unlikely to succeed where eight already
    haven't.
-8. **Try the two cheap programmatic-dump-request tests from §8 first**, once
-   the Tempest is connected via USB - a standard MIDI universal dump request
-   and a later-DSI-style request command. Neither has been attempted yet,
-   neither requires any firmware modification, and either one succeeding
-   would make the entire firmware-hook path in §8 unnecessary.
 
 ---
 
-## 8. Programmatic dump request: firmware-hook feasibility (2026-09-23)
+## 8. Cheap pre-firmware tests: programmatic dump requests (2026-09-23)
+
+Motivation: the user asked whether the firmware could be modified to add a
+programmatic dump request (send a SysEx command → the Tempest responds with
+a dump). The full assessment: yes in principle but the hard road - the OS
+update mechanism (§1's `0x71`-`0x74` family) proves the hardware accepts
+new firmware over SysEx, the export feature already exists in the firmware
+(the front panel's Export-over-MIDI triggers it), so a patch would be a
+*hook* (make the SysEx dispatcher call the existing export routine on a new
+message type) rather than a new feature - but it is gated on the base
+address (§5, 8 failed attempts) and carries real brick risk. Before any of
+that, two cheap tests can settle whether a request command already exists.
+The repo's standing claim ("the Tempest cannot be queried
+programmatically" - README) has never been explicitly tested with these.
+
+**Safety note:** sending well-formed but unrecognized SysEx is harmless -
+the Tempest ignores messages it doesn't handle. The one community report of
+a Tempest-side error ("status byte received in data", 2013) was about
+*malformed* framing, so keep every test message complete and well-formed
+(`F0 … F7`).
+
+### Test 1 - standard MIDI universal dump request
+
+Send the standard universal non-realtime request shapes, one at a time,
+with the Tempest connected via USB:
+
+```
+F0 7E <device> 06 7F F7        # SDS-style "dump all" request shape
+F0 7E <device> 06 00 F7        # SDS-style request, sample 0
+```
+
+`<device>` = the Tempest's device ID (try `0x7F` = all devices, and the
+value the Tempest's own MIDI settings show). Procedure per message:
+
+1. Start a capture first: `capture-tmp out.syx 2 30` (or call
+   `tempest_save_received_dump` from the MCP client), *then* send the
+   request - the response, if any, comes back within milliseconds.
+2. Watch the Tempest's display too: some requests trigger a display change
+   even when no dump follows, which is itself a signal the message was
+   recognized.
+3. Record: message sent, any response bytes, any display change.
+
+### Test 2 - DSI-style request commands
+
+Later DSI/Sequential instruments (Prophet '08/Rev2, Prophet-6, OB-6) support
+programmatic dumps via a DSI request protocol on manufacturer ID `0x2D` -
+the Tempest predates that protocol's documentation, but a hidden command may
+exist. Candidate shapes to try (exact sub-commands vary by instrument; these
+are the family to sweep):
+
+```
+F0 2D <device> 06 F7           # DSI "request edit buffer" shape
+F0 2D <device> 0E <bank> F7    # DSI "request bank" shape
+F0 2D <device> 0F <bank> <program> F7    # DSI "request single program" shape
+```
+
+Same procedure as Test 1. Also worth sweeping: the known Tempest data types
+themselves sent as *requests* (e.g. `F0 01 28 60 F7` with no payload) - if
+the firmware's dispatcher treats a bare type byte as "dump this", that is
+the cheapest possible win.
+
+### What the results mean
+
+- **Any response**: the "cannot be queried programmatically" claim is wrong
+  - wire the request into the MCP tooling (a `tempest_request_dump` tool
+  preceding `tempest_wait_for_dump`) and the manual Save/Load step
+  disappears from every workflow.
+- **No response to anything**: the firmware-hook path is the only road, and
+  it starts with the ICSP test (§7 item 5) - which is doubly motivated: it
+  settles the chip identity outright AND is step 1 of any firmware
+  modification (base address → locate the SysEx dispatcher → hook the
+  existing export routine → recompute the bootloader checksum → test with
+  re-flash-stock recovery).
+
+---
+
+## 9. Programmatic dump request: firmware-hook feasibility (2026-09-23)
 
 The user asked directly whether the firmware could be modified to support a
 programmatic dump request - a SysEx command the Tempest responds to with a
@@ -878,19 +955,10 @@ functionality from scratch.
 
 Realistically weeks of disassembly work, and gated entirely on step 1.
 
-**Two cheap, zero-risk tests to try first, once the Tempest is connected via
-USB** - neither requires any of the above:
-
-1. A standard MIDI universal dump request: `F0 7E <dev> 06 <model> F7`.
-   Never explicitly tested against this hardware as far as this repo's docs
-   show.
-2. Later-DSI-instrument-style request commands (Rev2 and OB-6 support
-   programmatic dumps via a request protocol; the Tempest predates that
-   generation, but a hidden/undocumented command may still exist). Worst
-   case the Tempest ignores an unrecognized SysEx message - no risk.
-
-If neither cheap test gets a response, the firmware-hook project is the
-real path forward, and it starts with the ICSP test above, which is worth
+**Try the cheap, zero-risk tests in §8 first** - a standard MIDI universal
+dump request and DSI-style request commands, neither of which requires any
+of the above. If neither gets a response, this firmware-hook path is the
+real road forward, and it starts with the ICSP test above, which is worth
 doing regardless since it also settles the exact chip identity.
 
 **Status:** this promotes the firmware-analysis thread from background
