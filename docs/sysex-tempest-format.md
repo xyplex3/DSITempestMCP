@@ -1205,6 +1205,58 @@ demonstrably can carry two notes, in files that exist right now. But
 exactly when it does and doesn't is still open, and the honest state is
 "we have proof it's possible, not a rule for when it's reliable."
 
+### 9.8 `0x61` Project format - partial progress, not a full decode
+
+Picked back up the `flash_export_test.syx` sample (95040 raw bytes, 83155
+unpacked) that §9.6 left as "completely unstarted beyond a brief anchor/text
+scan." Real, if incomplete, progress this pass:
+
+- **Confirmed a 32-byte prefix precedes the project header.** The known
+  0x5E-header landmark bytes (`00 00 03 02 00 00`, which sit at header-
+  relative offset 6 in the RAM-export 17-message stream's real 0x5E sample)
+  are found at absolute offset 38 in this file - meaning the header itself
+  starts at byte 32, not byte 0. Nothing at this size (32 bytes) reads as a
+  plausible offset table for the 16 beats when interpreted as 16×`uint16`
+  entries (values are far too large/random to be in-file offsets) - what
+  it actually is remains unknown.
+- **Found what's very likely Beat 0's name.** Printable-ASCII fragments
+  `" Bas"` at offset 0x189 and `"sic "` at offset 0x15cc - both consistent
+  with "Basic," a common DSI default name - sit exactly 5187 bytes apart,
+  matching the already-confirmed unpacked size of a real single-note
+  `0x5C` beat body.
+- **The simple "fixed 5187-byte stride" hypothesis for finding beats 2-16
+  fails immediately.** Checking the same relative offset (+0x189) at each
+  successive 5187-byte block only reproduces recognizable name-like text
+  for the second block; blocks 2-15 show unrelated binary content there.
+  Expected in hindsight - each beat's real encoded size depends on its own
+  note count (§7.3), so a fixed stride can only work if consecutive beats
+  happen to have the same note count.
+- **New structural puzzle found while searching for a better anchor.**
+  Tried locating each beat by its sequencer-region preamble instead (the
+  32-byte ascending-pairs pattern `01 00 03 02 05 04 07 06...` that's
+  byte-identical across every real `0x5F`/`0x5C` capture seen so far,
+  sitting at relative offset 1012 from a kit's start). An exact byte-level
+  search finds zero matches anywhere in the file. A partial match does turn
+  up around file offset 0x556, with the right bytes present but a
+  periodic corruption every few bytes (extra bytes like `0x80`/`0x8a`/`0x8c`
+  interrupting an otherwise-recognizable ascending sequence) - tried a
+  brute-force bit-shift search (0-63 bits) to see if a non-byte-aligned
+  offset would clean it up; best result only matched 4/32 bytes, not a real
+  fix. This looks like a *different*, more complex packing than a simple
+  bit shift - possibly a smaller per-entry bit-width specific to how this
+  region is stored inside a Project file, not yet understood.
+
+**Where this leaves things:** the `0x61` "export saved file" format is
+confirmed to have real internal structure (a header preceded by an
+unexplained 32-byte block, followed by beats that are not simply
+concatenated at a fixed size) rather than being a flat pass-through of the
+same layout used elsewhere. Solving it fully would need either finding the
+real offset/length table (if the 32-byte prefix is that, its encoding isn't
+a simple 16-bit array) or reverse-engineering whatever different bit-width
+packing produces the corrupted-looking pattern at 0x556. Neither is solved
+here - this is progress on a "substantial task on its own," not a
+completed one.
+
 ---
 
 ## Suggested next steps for this repo
@@ -1249,16 +1301,16 @@ Still open, in priority order:
    has been run under controlled conditions yet. Also still worth trying:
    Export Beat immediately after Save Beat to
    Flash (does saving first change anything?).
-2. **Decode the `0x61` Project format** (§9.6) - a real sample now exists
-   (`flash_export_test.syx`, from "Export saved file over MIDI" on a
-   flash-saved Project, *not* the RAM export path used by §9.5's 17-message
-   finding - these are two different `0x61`-vs-`0x5C`/`0x5E` export paths for
-   what is nominally the same "Project" concept). It unescapes cleanly with
-   the standard scheme but doesn't contain the confirmed note-record anchor
-   pattern anywhere, and mostly garbled embedded text - `0x61` likely has
-   real internal structure beyond a single flat collector-first pass.
-   Completely unstarted beyond this session's brief anchor/text scan; a
-   substantial task on its own.
+2. **Decode the `0x61` Project format** (§9.6, progress in §9.8) - a real
+   sample exists (`flash_export_test.syx`, from "Export saved file over
+   MIDI" on a flash-saved Project, *not* the RAM export path used by
+   §9.5's 17-message finding). §9.8 found a 32-byte prefix before the
+   project header and Beat 0's likely name/position, but the naive
+   fixed-stride guess for finding beats 2-16 fails, and the sequencer
+   region shows a corrupted, not-simply-bit-shifted version of the
+   otherwise-reliable pad-table-adjacent anchor pattern - a real, still
+   unsolved packing puzzle specific to this format. Still a substantial
+   task on its own, but no longer completely unstarted.
 3. **Figure out whether Export Project (RAM) reflects live state** (§9.5) -
    two Project exports, with a careful fresh Initialize-and-edit cycle in
    between, came back byte-identical except for 2 velocity-noise bytes, as
