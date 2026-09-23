@@ -128,6 +128,31 @@ func TestSoundByID(t *testing.T) {
 	}
 }
 
+// packRAMName builds a synthetic RAM (0x60) SysEx message whose bit-packed
+// name field (see sysex.SoundNameBitOffset) decodes to name, for testing
+// how the library indexes a real on-device RAM sound name.
+func packRAMName(t *testing.T, name string) []byte {
+	t.Helper()
+	padded := name + strings.Repeat(" ", sysex.SoundNameLen-len(name))
+	totalBits := sysex.SoundNameBitOffset + sysex.SoundNameLen*7
+	unescaped := make([]byte, (totalBits+7)/8)
+	for c := 0; c < len(padded); c++ {
+		val := padded[c]
+		for b := range 7 {
+			if val&(1<<b) == 0 {
+				continue
+			}
+			globalBit := sysex.SoundNameBitOffset + c*7 + b
+			unescaped[globalBit/8] |= 1 << (globalBit % 8)
+		}
+	}
+	escaped := sysex.Escape7Plus1(unescaped)
+	msg := []byte{0xF0, sysex.ManufacturerID, sysex.DeviceID, sysex.TypeRAM}
+	msg = append(msg, escaped...)
+	msg = append(msg, 0xF7)
+	return msg
+}
+
 // mustWriteFile writes data to path, creating parent directories as needed.
 func mustWriteFile(t *testing.T, path string, data []byte) {
 	t.Helper()
@@ -208,6 +233,37 @@ func TestScan(t *testing.T) {
 			t.Errorf("Tags = %v, want to contain 'Kicks'", s.Tags)
 		}
 	})
+}
+
+// TestScan_RAMSoundKeepsFilenameSearchable verifies that a RAM sound's
+// filename stays searchable as a tag even after decoding a real (often
+// generic) on-device name.
+func TestScan_RAMSoundKeepsFilenameSearchable(t *testing.T) {
+	dir := t.TempDir()
+	// "Basic" matches what most real RAM captures decode to (an
+	// unrenamed starting patch) - see docs/sysex-tempest-format.md §9.9.
+	msg := packRAMName(t, "Basic")
+	path := filepath.Join(dir, "my_kick_test.syx")
+	mustWriteFile(t, path, msg)
+
+	idx, err := library.Scan(dir)
+	if err != nil {
+		t.Fatalf("Scan() error = %v", err)
+	}
+	if len(idx.Sounds) != 1 {
+		t.Fatalf("Sounds len = %d, want 1", len(idx.Sounds))
+	}
+	s := idx.Sounds[0]
+	if s.Name != "Basic" {
+		t.Errorf("Name = %q, want %q (decoded on-device name)", s.Name, "Basic")
+	}
+
+	results := library.Search(idx, "kick")
+	if len(results) != 1 {
+		t.Fatalf("Search(%q) = %d results, want 1 - the filename must stay "+
+			"searchable via a tag even though Name is now the generic on-device "+
+			"name, not the descriptive filename", "kick", len(results))
+	}
 }
 
 // TestReadSyxMessages verifies reading raw SysEx messages from a file.

@@ -33,16 +33,16 @@ func (d *Device) SetTempo(bpm float64) error {
 	}
 
 	d.mu.Lock()
+	if d.send == nil {
+		d.mu.Unlock()
+		return fmt.Errorf("not connected")
+	}
 	d.stopClockLocked()
 	stop := make(chan struct{})
 	d.clockStop = stop
 	d.clockBPM = bpm
 	send := d.send
 	d.mu.Unlock()
-
-	if send == nil {
-		return fmt.Errorf("not connected")
-	}
 
 	// One quarter note = 60/bpm seconds → one PPQN tick = 60/(bpm*24) seconds
 	interval := time.Duration(float64(time.Minute) / (bpm * 24))

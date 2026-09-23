@@ -13,6 +13,7 @@ import (
 
 	"github.com/mark3labs/mcp-go/mcp"
 
+	"tempest-mcp/internal/library"
 	"tempest-mcp/internal/midi"
 	"tempest-mcp/internal/sysex"
 )
@@ -500,5 +501,44 @@ func TestLoadDumpOrWait_NoPathWaitsForDevice(t *testing.T) {
 	}
 	if !strings.Contains(err.Error(), "not connected") {
 		t.Errorf("error = %q, want to contain %q", err.Error(), "not connected")
+	}
+}
+
+// TestFindSound verifies ID/prefix matching, and that an empty id returns
+// nil instead of matching the first sound via an always-true empty-string
+// prefix.
+func TestFindSound(t *testing.T) {
+	t.Parallel()
+	lib := &library.Index{Sounds: []*library.Sound{
+		{ID: "aaaa1111", Name: "Kick"},
+		{ID: "bbbb2222", Name: "Snare"},
+	}}
+
+	tests := []struct {
+		name     string
+		id       string
+		wantNil  bool
+		wantName string
+	}{
+		{name: "exact ID match", id: "aaaa1111", wantName: "Kick"},
+		{name: "prefix match", id: "bbbb", wantName: "Snare"},
+		{name: "empty id returns nil, not the first sound", id: "", wantNil: true},
+		{name: "unknown id returns nil", id: "zzzz9999", wantNil: true},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			got := findSound(lib, tt.id)
+			if tt.wantNil {
+				if got != nil {
+					t.Errorf("findSound(%q) = %+v, want nil", tt.id, got)
+				}
+				return
+			}
+			if got == nil || got.Name != tt.wantName {
+				t.Errorf("findSound(%q) = %+v, want Name %q", tt.id, got, tt.wantName)
+			}
+		})
 	}
 }

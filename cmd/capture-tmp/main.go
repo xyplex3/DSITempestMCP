@@ -127,6 +127,10 @@ func verify(raw []byte, expectedNotes int, baselinePath string) {
 	fmt.Println("=== Pad table (first 4 entries) ===")
 	for pad := range 4 {
 		off := sysex.KitPadTableOffset + pad*sysex.KitPadEntryLen
+		if off+sysex.KitPadEntryLen > len(unescaped) {
+			fmt.Printf("  A%d: ⚠ truncated — capture is only %d bytes unpacked\n", pad+1, len(unescaped))
+			continue
+		}
 		entry := unescaped[off : off+sysex.KitPadEntryLen]
 		fmt.Printf("  A%d: % 02x\n", pad+1, entry)
 	}
@@ -160,6 +164,9 @@ func printNoteCount(rawLen, expectedNotes int) int {
 // only meaningful when exactly one note is active (see package doc comment).
 func printStepInfo(unescaped []byte, notes int) {
 	switch {
+	case notes == 1 && len(unescaped) <= velocityOffset:
+		fmt.Printf("⚠ capture too short to decode step/track/velocity — only %d bytes unpacked, need >%d\n",
+			len(unescaped), velocityOffset)
 	case notes == 1:
 		pos := unescaped[stepPosOffset]
 		trk := unescaped[trackOffset]

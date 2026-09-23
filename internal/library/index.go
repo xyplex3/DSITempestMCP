@@ -96,10 +96,20 @@ func parseSyxFile(path, rootPath string, fileSize int64) ([]*Sound, error) {
 
 		unescaped := sysex.Unescape(msg)
 		name, _ := sysex.ExtractName(unescaped, t)
+		base := filepath.Base(path)
+		filenameStem := strings.TrimSuffix(base, filepath.Ext(base))
+		soundTags := tags
 		if name == "" {
 			// RAM sound or nameless — use filename
-			base := filepath.Base(path)
-			name = strings.TrimSuffix(base, filepath.Ext(base))
+			name = filenameStem
+		} else if t == sysex.TypeRAMSound {
+			// RAM sounds decode a real on-device name (see
+			// docs/sysex-tempest-format.md §9.9), which is often generic
+			// (e.g. "Basic" — the name doesn't change just because the
+			// exported file was renamed). Keep the filename searchable too
+			// as a tag, so tempest_search_sounds doesn't lose sounds that
+			// were previously only findable by their descriptive filename.
+			soundTags = append(append([]string{}, tags...), filenameStem)
 		}
 		// Strip factory /S/ prefix for display
 		displayName := strings.TrimPrefix(name, "/S/")
@@ -116,7 +126,7 @@ func parseSyxFile(path, rootPath string, fileSize int64) ([]*Sound, error) {
 			Path:      path,
 			SizeBytes: fileSize,
 			Folder:    folder,
-			Tags:      tags,
+			Tags:      soundTags,
 			MsgType:   msgTypeName(t),
 			IndexedAt: time.Now(),
 		})

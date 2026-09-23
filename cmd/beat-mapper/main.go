@@ -380,26 +380,46 @@ func buildCaptureIndex(captures []sessionCapture) map[captureKey]*sessionCapture
 }
 
 func computeStrides(byKey map[captureKey]*sessionCapture) (stepStride, trackStride int) {
-	stepStride, trackStride = -1, -1
 	// Step stride: same bank+track, step N and step N+1.
-	for k, c1 := range byKey {
-		if c2, ok := byKey[captureKey{k.bank, k.track, k.step + 1}]; ok {
-			if d := c2.primaryOffset - c1.primaryOffset; d > 0 {
-				stepStride = d
-				break
-			}
-		}
-	}
+	stepStride = pickStride(byKey, func(k captureKey) captureKey {
+		return captureKey{k.bank, k.track, k.step + 1}
+	})
 	// Track stride: same bank+step, track N and track N+1.
+	trackStride = pickStride(byKey, func(k captureKey) captureKey {
+		return captureKey{k.bank, k.track + 1, k.step}
+	})
+	return
+}
+
+// pickStride collects every positive offset delta between a capture and its
+// neighbor(k) counterpart, then returns the most frequent delta (ties
+// broken by the smallest delta, matching InferStride in mapper/diff.go).
+// Picking the *first* qualifying pair instead, via Go's randomized map
+// iteration order, would make the result non-deterministic across runs of
+// the identical input whenever more than one candidate pair exists.
+func pickStride(byKey map[captureKey]*sessionCapture, neighbor func(captureKey) captureKey) int {
+	var deltas []int
 	for k, c1 := range byKey {
-		if c2, ok := byKey[captureKey{k.bank, k.track + 1, k.step}]; ok {
+		if c2, ok := byKey[neighbor(k)]; ok {
 			if d := c2.primaryOffset - c1.primaryOffset; d > 0 {
-				trackStride = d
-				break
+				deltas = append(deltas, d)
 			}
 		}
 	}
-	return
+	if len(deltas) == 0 {
+		return -1
+	}
+	freq := make(map[int]int, len(deltas))
+	for _, d := range deltas {
+		freq[d]++
+	}
+	best, bestN := 0, 0
+	for d, n := range freq {
+		if n > bestN || (n == bestN && d < best) {
+			best, bestN = d, n
+		}
+	}
+	return best
 }
 
 // parseCaptureName extracts bank (0=a, 1=b), track, and step from filenames such as

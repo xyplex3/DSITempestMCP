@@ -107,4 +107,25 @@ func TestComputeStrides(t *testing.T) {
 			t.Errorf("stepStride = %d, want -1 (no step+1 pair present)", stepStride)
 		}
 	})
+
+	t.Run("multiple candidates deterministically picks the most frequent delta", func(t *testing.T) {
+		// Two step+1 pairs agree on delta 50, one disagrees with 99 - the
+		// most-frequent delta must win every time, regardless of Go's
+		// randomized map iteration order. Run several times in the same
+		// process to actually exercise different iteration orders.
+		byKey := map[captureKey]*sessionCapture{
+			{bank: 0, track: 1, step: 1}: {primaryOffset: 0x000},
+			{bank: 0, track: 1, step: 2}: {primaryOffset: 0x032}, // delta 50
+			{bank: 0, track: 2, step: 1}: {primaryOffset: 0x100},
+			{bank: 0, track: 2, step: 2}: {primaryOffset: 0x132}, // delta 50
+			{bank: 0, track: 3, step: 1}: {primaryOffset: 0x200},
+			{bank: 0, track: 3, step: 2}: {primaryOffset: 0x263}, // delta 99
+		}
+		for i := range 20 {
+			stepStride, _ := computeStrides(byKey)
+			if stepStride != 50 {
+				t.Fatalf("run %d: stepStride = %d, want 50 (most frequent delta)", i, stepStride)
+			}
+		}
+	})
 }

@@ -854,6 +854,14 @@ func (s *Server) handleExtractSoundsFromProject(_ context.Context, req mcp.CallT
 		if writeErrs > 0 {
 			msg += fmt.Sprintf(" (%d writes failed, check logs)", writeErrs)
 		}
+		if len(sounds) == 0 {
+			msg += "\n\nNote: this scans for embedded FLASH-style Sound parameter blocks " +
+				"(the same signature BuildFLASHDump writes). Per docs/sysex-tempest-format.md " +
+				"§9.10/§9.11, a Project dump's 16 beats are kit blocks with a 30-byte-per-pad " +
+				"table, not full 132-byte embedded Sound blocks - a real Project dump can " +
+				"legitimately have zero matches here. Use tempest_decode_project_beats to see " +
+				"the beat/pad contents this dump actually has."
+		}
 		return ok(msg), nil
 	case <-time.After(time.Duration(timeout) * time.Second):
 		return fail(fmt.Errorf("timeout after %ds — trigger Send Project from SETUP → MIDI", timeout))
@@ -1330,8 +1338,13 @@ func (s *Server) handleCreateSound(ctx context.Context, req mcp.CallToolRequest)
 	return ok(result), nil
 }
 
-// findSound looks up a sound by full fingerprint ID or prefix match.
+// findSound looks up a sound by full fingerprint ID or prefix match. Returns
+// nil for an empty id rather than matching every sound via an empty-string
+// prefix.
 func findSound(lib *library.Index, id string) *library.Sound {
+	if id == "" {
+		return nil
+	}
 	for _, snd := range lib.Sounds {
 		if snd.ID == id || strings.HasPrefix(snd.ID, id) {
 			return snd

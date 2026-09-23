@@ -139,12 +139,10 @@ func TestSendRawValidation(t *testing.T) {
 	}
 }
 
-// TestSetTempo_UnconnectedWithValidBPM documents SetTempo's current
-// behavior on a disconnected device: it records clockStop/clockBPM before
-// checking the connection, so a failed SetTempo call still leaves
-// CurrentBPM reporting the requested tempo even though no clock goroutine
-// was ever started. This pins down existing behavior for regression
-// purposes; it is not necessarily the ideal behavior.
+// TestSetTempo_UnconnectedWithValidBPM verifies that a failed SetTempo call
+// (valid BPM, but no connection) leaves the clock state untouched: the
+// connection is checked before clockStop/clockBPM are mutated, so
+// CurrentBPM must not report a tempo that was never actually applied.
 func TestSetTempo_UnconnectedWithValidBPM(t *testing.T) {
 	d := midi.New(midi.DeviceConfig{Channel: 10})
 
@@ -155,9 +153,9 @@ func TestSetTempo_UnconnectedWithValidBPM(t *testing.T) {
 	if !strings.Contains(err.Error(), "not connected") {
 		t.Errorf("error = %q, want to contain %q", err.Error(), "not connected")
 	}
-	if got := d.CurrentBPM(); got != 140 {
-		t.Errorf("CurrentBPM() after failed SetTempo = %g, want 140 "+
-			"(documents that clock state is recorded before the connection check)", got)
+	if got := d.CurrentBPM(); got != 0 {
+		t.Errorf("CurrentBPM() after failed SetTempo = %g, want 0 "+
+			"(clock state must not change on a failed SetTempo call)", got)
 	}
 }
 
