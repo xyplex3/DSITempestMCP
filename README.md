@@ -19,6 +19,10 @@ receive SysEx dumps - all from a conversation.
   interpolation; create blank sounds from the Tempest reference signature
 - **SysEx I/O** - wait for incoming dumps, save them to disk, send `.syx`
   files back to the hardware, extract individual sounds from project dumps
+- **Project/Beat decoding** - decode all 16 beats of a Project dump (name,
+  BPM, swing, note records) or get a project-level diagnostic summary
+- **Export wizard** - guided Save/Load walkthrough that validates the dump
+  type that actually arrives, catching the Export Beat/Export Project mixup
 - **Beat research** - `beat-mapper` CLI computes step and track strides from
   hardware captures to unlock future beat-writing tools
 
@@ -331,6 +335,9 @@ your library.
 | `tempest_send_syx_file` | Send a `.syx` file to the Tempest (with 1 s inter-message pause) |
 | `tempest_extract_sounds_from_project` | Wait for a project dump and extract individual sounds to `.syx` files |
 | `tempest_read_sound_params` | Decode a Sound (0x60) dump's named synthesis parameters, from a saved `.syx` or a live dump |
+| `tempest_export_wizard` | Walk through exporting a Beat or Project correctly and validate the dump type that actually arrives - catches the Export Beat/Export Project menu mixup |
+| `tempest_decode_project_beats` | Decode all 16 beats from a Project (0x61) dump: name, BPM, swing, and any note records, per beat |
+| `tempest_analyze_project` | Project-level diagnostic summary: how many beats still default, total note count, and the same research caveats as the decode tool |
 
 ### Utilities
 
@@ -347,25 +354,31 @@ your library.
 
 ### The problem
 
-One planned MCP tool is still blocked, though real progress has been made on
-the DSI Tempest's undocumented sequencer byte layout:
+The DSI Tempest's undocumented sequencer byte layout has been decoded far
+enough to read beat/project data reliably; what's still blocked is
+**writing** it back:
 
-**Beat pattern writing** (`tempest_decode_project_beats`, `tempest_write_beat`,
-`tempest_clear_beat`) requires knowing exactly how a beat's active notes are
-stored in a Beat/Kit (0x5F) export. The **single-note case is confirmed**
-(`docs/sysex-tempest-format.md` §9): each active note is an 80-bit (10-byte)
-record starting at absolute unpacked-payload byte 1077, with a confirmed step
-position, a confirmed track-identity byte (`0x80 | 0-based track index`, not
-a positional offset the way earlier sessions assumed), and a known-but-noisy
-velocity byte. **The container format is now confirmed capable of holding
-multiple notes** - three existing captures show two different tracks as
-clean, correctly-formed consecutive 10-byte records (see §9.7). But the
-obvious follow-up guess ("same/adjacent step is what makes it work") doesn't
-hold up: one of those three has the same step-delta as the original failing
-test, so step-delta alone isn't the distinguishing factor, and none of the
-three were captured under today's verified-clean methodology - they may not
-even be controlled tests. Until a real controlled test isolates what
-actually causes note loss, still too risky to implement multi-note writing.
+**Reading is done.** `tempest_decode_project_beats` and
+`tempest_analyze_project` are built and shipped. The `0x61` Project format
+is fully solved (`docs/sysex-tempest-format.md` §9.10): the extra header
+byte is a path-length prefix like FLASH's, and the payload is a 349-byte
+project header followed by 16 kit blocks in the standard `0x5F` layout -
+`sysex.ProjectBeats` decodes all of it. Within each block, a single active
+note is a confirmed 80-bit (10-byte) record starting at relative byte 1077,
+with a confirmed step position, a confirmed track-identity byte (`0x80 |
+0-based track index`), and a known-but-noisy velocity byte (§9.1-9.3).
+
+**Beat pattern writing** (`tempest_write_beat`, `tempest_clear_beat`) is
+still blocked on the multi-note case. **The container format is confirmed
+capable of holding multiple notes** - three existing captures show two
+different tracks as clean, correctly-formed consecutive 10-byte records
+(see §9.7). But the obvious follow-up guess ("same/adjacent step is what
+makes it work") doesn't hold up: one of those three has the same step-delta
+as the original failing test, so step-delta alone isn't the distinguishing
+factor, and none of the three were captured under today's verified-clean
+methodology - they may not even be controlled tests. Until a real
+controlled test isolates what actually causes note loss, still too risky to
+implement multi-note writing.
 
 **Named sound parameter reading** (`tempest_read_sound_params`) is now
 available: the parameter offset table (`internal/sysex/soundparams.go`) was
@@ -601,13 +614,22 @@ Add `TestDecodeBeat_roundtrip`: decode a captured fixture → re-encode →
 compare bytes → must be byte-for-byte identical. **The round-trip test must
 pass before any write tool is built.**
 
-#### Step 4 - Add `tempest_decode_project_beats` (read-only)
+#### Step 4 - `tempest_decode_project_beats` / `tempest_analyze_project` (done)
 
-Validate on hardware before adding any write tools.
+Built ahead of the original sequential order above: these read-only tools
+decode what's already understood today (the 0-note and single-note cases,
+and the full 16-beat Project structure per §9.10) without waiting on Step 1
+
+- they don't need the multi-note layout to be useful, and they surface a
+clear caveat in their own output whenever a beat shows more than one note
+record, since that specific case is still the unverified extrapolation
+described in Step 1. Validated against real hardware-captured `.syx` files.
 
 #### Step 5 - Add `tempest_write_beat` and `tempest_clear_beat`
 
-Only after `tempest_decode_project_beats` has been validated on real
+Still blocked on Step 1, not Step 4 - writing requires trusting the
+multi-note layout in a way reading doesn't. Validate `DecodeBeat`/`EncodeBeat`
+(Step 3) on real
 hardware.
 
 > **Warning:** Sending a modified Beat/Kit dump risks overwriting the current
@@ -686,9 +708,11 @@ terminal.
 tempest-mcp/
 ├── cmd/
 │   ├── tempest-mcp/main.go          MCP server entry point, CLI flags
-│   └── beat-mapper/                 Standalone research CLI (no MIDI dependency)
-│       ├── main.go                  Four subcommands: unescape, diff, annotate, session
-│       └── mapper/                  Library: diff, stride inference, hex annotation
+│   ├── beat-mapper/                 Standalone research CLI (no MIDI dependency)
+│   │   ├── main.go                  Four subcommands: unescape, diff, annotate, session
+│   │   └── mapper/                  Library: diff, stride inference, hex annotation
+│   ├── capture-tmp/main.go          Live capture + verified note-count/pad-table CLI
+│   └── tempest-analyze-beat/main.go Diagnostic CLI for Beat/Kit export analysis
 ├── internal/
 │   ├── config/config.go             YAML config load/save with defaults
 │   ├── midi/
@@ -698,7 +722,9 @@ tempest-mcp/
 │   │   └── cc.go                    Beat FX CC sends and name table
 │   ├── sysex/
 │   │   ├── encoding.go              7+1 and standard DSI 7-of-8 codecs
-│   │   └── message.go               Message type detection, parsing, fingerprinting
+│   │   ├── message.go               Message type detection, parsing, fingerprinting,
+│   │   │                            RAM name decode, Project (0x61) beat decode
+│   │   └── soundparams.go           Sound (0x60) parameter bit map
 │   ├── library/
 │   │   ├── index.go                 .syx file scanner, JSON index, bank slot tracking
 │   │   └── search.go                Fuzzy search
@@ -729,8 +755,9 @@ The Tempest uses one encoding scheme across every recognised message type:
 
 Groups of 8 wire bytes are 1 leading **collector** byte followed by 7 data
 bytes; bit *k* of the collector is the high bit of data byte *k*. FLASH
-(0x63) and bank-sound (0x5C) messages carry one extra header byte before the
-payload - for FLASH this is a name/path-length prefix, not a bank/slot (see
+(0x63), bank-sound (0x5C), and file-type Project (0x61, "Export saved file
+over MIDI") messages carry one extra header byte before the payload - for
+FLASH and Project this is a name/path-length prefix, not a bank/slot (see
 below).
 
 Sound names are null-terminated ASCII at the start of the unescaped payload
@@ -756,16 +783,19 @@ field (`sysex.KitNameOffset`). Factory sounds use `/S/Category/Name` prefixes
 > the Tempest's own Save/Load prompt when the dump arrives.
 >
 > Original sources: [TempestEdit](https://www.bitrotten.com/tempest/editor/)
-> (an unofficial browser-based Tempest editor) and a companion
+> (an unofficial browser-based Tempest editor, still actively maintained by
+> its author as of 2026 - its deployed source was independently
+> cross-checked bit-for-bit against this repo's own bit-packed name decode
+> and header-length logic, confirming both) and a companion
 > [SysEx bit map](https://gist.github.com/fadeddata/c39a3b4b10e1e51af58e49ef74aca116),
 > cross-checked against this repo's prior baseline, KnobKraft Orm (Christof
-> Ruch, 2022). The RAM (0x60) bit-packed name field is now confirmed (see
-> docs/sysex-tempest-format.md §9.9). Still unconfirmed: the 0x5C/0x5E
-> scheme specifically (assumed uniform with the rest, not independently
-> decoded), and everything past `KitSequencerOffset`
-> (step/track/gate data - needs a real `beat-mapper session` capture run, not
-> just existing files). Full details in
-> **[docs/sysex-tempest-format.md](docs/sysex-tempest-format.md)**.
+> Ruch, 2022). The RAM (0x60) bit-packed name field is confirmed (§9.9), and
+> the `0x61` Project format is fully solved (§9.10) - `sysex.ProjectBeats`
+> decodes all 16 beats. Within each beat, the single-note record past
+> `KitSequencerOffset` is confirmed (§9.1-9.3); the multi-note case is not
+> (§9.4/§9.7). Still unconfirmed: the `0x5C`/`0x5E` scheme specifically
+> (assumed uniform with the rest, not independently decoded). Full details
+> in **[docs/sysex-tempest-format.md](docs/sysex-tempest-format.md)**.
 
 ---
 

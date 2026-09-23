@@ -5,6 +5,7 @@
 package server
 
 import (
+	"bytes"
 	"os"
 	"path/filepath"
 	"strings"
@@ -12,6 +13,7 @@ import (
 
 	"github.com/mark3labs/mcp-go/mcp"
 
+	"tempest-mcp/internal/midi"
 	"tempest-mcp/internal/sysex"
 )
 
@@ -434,5 +436,69 @@ func TestBeatNoteCountLine(t *testing.T) {
 				t.Errorf("beatNoteCountLine(%d) = %q, want it to contain %q", tt.rawLen, got, tt.want)
 			}
 		})
+	}
+}
+
+// TestLoadDumpOrWait_Path verifies that loadDumpOrWait reads from the
+// "path" argument when set, without touching the device.
+func TestLoadDumpOrWait_Path(t *testing.T) {
+	t.Parallel()
+	dir := t.TempDir()
+	file := filepath.Join(dir, "dump.syx")
+	want := []byte{0xF0, 0x01, 0x28, 0x60, 0xF7}
+	if err := os.WriteFile(file, want, 0o600); err != nil {
+		t.Fatalf("writing test file: %v", err)
+	}
+
+	s := &Server{}
+	got, err := s.loadDumpOrWait(makeReq(map[string]any{"path": file}), "trigger it")
+	if err != nil {
+		t.Fatalf("loadDumpOrWait() error = %v", err)
+	}
+	if !bytes.Equal(got, want) {
+		t.Errorf("loadDumpOrWait() = %v, want %v", got, want)
+	}
+}
+
+// TestLoadDumpOrWait_PathErrors verifies error handling for an invalid or
+// missing path, without touching the device.
+func TestLoadDumpOrWait_PathErrors(t *testing.T) {
+	t.Parallel()
+	tests := []struct {
+		name    string
+		path    string
+		wantErr string
+	}{
+		{name: "relative path rejected", path: "relative/dump.syx", wantErr: "invalid path"},
+		{name: "missing file", path: "/nonexistent/dump.syx", wantErr: "reading"},
+	}
+
+	s := &Server{}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			_, err := s.loadDumpOrWait(makeReq(map[string]any{"path": tt.path}), "trigger it")
+			if err == nil {
+				t.Fatalf("loadDumpOrWait(%q) expected error, got nil", tt.path)
+			}
+			if !strings.Contains(err.Error(), tt.wantErr) {
+				t.Errorf("error = %q, want to contain %q", err.Error(), tt.wantErr)
+			}
+		})
+	}
+}
+
+// TestLoadDumpOrWait_NoPathWaitsForDevice verifies that, without a path,
+// loadDumpOrWait falls through to waiting on the device and surfaces a
+// "not connected" error on a disconnected device rather than blocking for
+// the full timeout.
+func TestLoadDumpOrWait_NoPathWaitsForDevice(t *testing.T) {
+	s := &Server{device: midi.New(midi.DeviceConfig{Channel: 10})}
+	_, err := s.loadDumpOrWait(makeReq(nil), "trigger it")
+	if err == nil {
+		t.Fatal("loadDumpOrWait() expected error on disconnected device, got nil")
+	}
+	if !strings.Contains(err.Error(), "not connected") {
+		t.Errorf("error = %q, want to contain %q", err.Error(), "not connected")
 	}
 }
