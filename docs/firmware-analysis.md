@@ -834,3 +834,68 @@ In priority order, given everything above:
    success (§5), several exhaustively or conclusively; further variations
    on the same approaches are unlikely to succeed where eight already
    haven't.
+8. **Try the two cheap programmatic-dump-request tests from §8 first**, once
+   the Tempest is connected via USB - a standard MIDI universal dump request
+   and a later-DSI-style request command. Neither has been attempted yet,
+   neither requires any firmware modification, and either one succeeding
+   would make the entire firmware-hook path in §8 unnecessary.
+
+---
+
+## 8. Programmatic dump request: firmware-hook feasibility (2026-09-23)
+
+The user asked directly whether the firmware could be modified to support a
+programmatic dump request - a SysEx command the Tempest responds to with a
+dump, instead of the current front-panel-only Save/Load trigger. Assessment
+from this session:
+
+**Feasible in principle, but it's the hard road, not a shortcut.** The
+Tempest already accepts new firmware over SysEx - that's the existing
+0x71-0x74 per-processor OS update mechanism - and the export routine itself
+already exists in Main's firmware (the front panel's Export-over-MIDI menu
+calls it). A working patch would be a *hook*: make the SysEx dispatcher call
+the existing export routine on a new message type, not implement new
+functionality from scratch.
+
+**What it would actually take, in order:**
+
+1. Solve the base-address problem (§5) - the actual blocker, unchanged by
+   this question. Eight independent attempts have failed; §7 item 5's ICSP
+   test is still the strongest lead, and is now doubly motivated since it's
+   also step one of any firmware modification.
+2. Locate the SysEx receive/dispatch code in Main (the code path that
+   already handles 0x71-0x74 and the sound/beat/project load messages).
+3. Locate the export routine itself and its calling convention.
+4. Write the MIPS32 hook (a new message type, placed in unused/padding
+   space).
+5. Recompute the bootloader's checksum - almost certainly a simple checksum
+   given the Tempest's 2009 vintage rather than a cryptographic signature,
+   but this is unverified. If it turns out to be a signature, this path
+   ends here.
+6. Test on real hardware, with real brick risk. Recovery path: re-flash
+   stock OS over SysEx (the bootloader itself should survive a bad Main
+   image) or ICSP.
+
+Realistically weeks of disassembly work, and gated entirely on step 1.
+
+**Two cheap, zero-risk tests to try first, once the Tempest is connected via
+USB** - neither requires any of the above:
+
+1. A standard MIDI universal dump request: `F0 7E <dev> 06 <model> F7`.
+   Never explicitly tested against this hardware as far as this repo's docs
+   show.
+2. Later-DSI-instrument-style request commands (Rev2 and OB-6 support
+   programmatic dumps via a request protocol; the Tempest predates that
+   generation, but a hidden/undocumented command may still exist). Worst
+   case the Tempest ignores an unrecognized SysEx message - no risk.
+
+If neither cheap test gets a response, the firmware-hook project is the
+real path forward, and it starts with the ICSP test above, which is worth
+doing regardless since it also settles the exact chip identity.
+
+**Status:** this promotes the firmware-analysis thread from background
+research to active interest, per the user's own question. Also worth
+asking Leviathant (TempestEdit's author, who has mapped more of the
+Tempest's SysEx behavior than anyone outside DSI) whether he knows of an
+existing request command - the Gearspace post asking Chris Pym is still
+pending a reply (§7 item 4).
