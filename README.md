@@ -318,14 +318,14 @@ your library.
 
 **To dump a sound currently in the edit buffer (RAM):**
 
-1. On the Tempest: press **Save/Load** → choose **Export Sound in RAM over
+1. On the Tempest: press **Save/Load** → choose **Export Sound over
    MIDI** → press **Next** → set destination to **USB** → press **Export Now**
 2. Ask Claude: *"Save the dump I just sent to ~/Tempest/MyKick.syx"*
 
 **To dump a project:**
 
-1. In **16 Beats** mode: press **Save/Load** → choose **Export Project in
-   RAM over MIDI** → press **Next** → destination **USB** → **Export Now**
+1. In **16 Beats** mode: press **Save/Load** → choose **Export Project
+   over MIDI** → press **Next** → destination **USB** → **Export Now**
 2. Ask Claude: *"Extract all the sounds from that project dump"*
 
 | Tool | Description |
@@ -413,7 +413,7 @@ entirely on `.syx` files captured to disk with `tempest_save_received_dump`.
 > capture session.
 >
 > **Beat dump alternative:** The Tempest supports exporting a single beat via
-> **Save/Load → Export Beat in RAM over MIDI → Next → USB → Export Now**. This
+> **Save/Load → Export Beat over MIDI → Next → USB → Export Now**. This
 > produces a smaller SysEx message than a full project dump (~1/16 the size),
 > which makes diffs faster to read. The message type byte for this command is
 > **`0x5F`**, added as `TypeBeatDump` in `internal/sysex/message.go` - confirmed
@@ -560,7 +560,7 @@ decoder code:
 2. **16 Sounds** → tap A2 → **16 Time Steps** → tap step 2, again confirming
    on screen that A2 is actually selected and the beat number/name hasn't
    changed.
-3. In **Save/Load**, double-check the menu says **Export Beat in RAM over
+3. In **Save/Load**, double-check the menu says **Export Beat over
    MIDI**, not Export Project - the two are adjacent and easy to mix up (this
    derailed the last attempt at this exact test).
 4. Capture with `cmd/capture-tmp` (`capture-tmp out.syx 2 30
@@ -645,7 +645,7 @@ dumps.
 #### Capture protocol (15–20 single-param changes)
 
 1. Load a factory sound to the Tempest edit buffer.
-2. Dump via **Save/Load → Export Sound in RAM over MIDI → USB**. Save as
+2. Dump via **Save/Load → Export Sound over MIDI → USB**. Save as
    `sound_baseline.syx`.
 3. Change exactly one parameter (e.g. LP Cutoff from 64 to 74).
 4. Dump again. Save as `sound_lp_cutoff_74.syx`.

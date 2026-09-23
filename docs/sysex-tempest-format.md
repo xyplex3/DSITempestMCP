@@ -1478,6 +1478,35 @@ distortion@12, compression@13, delay time@14/repeats@15, roll-rate@16,
 env-trigger@17, comp-env attack@18/decay-mirror@19/decay@20/amount@21,
 volume@22, bars@23, Real Time FX table@32 (8 slots × 4 bytes).
 
+### 9.12 Correction (2026-09-23): the on-screen menu label is "Export ___ over MIDI", not "in RAM"
+
+This doc and the README have consistently written the Save/Load menu items
+as "Export Sound/Beat/Project **in RAM** over MIDI," sourced from the
+manual's own procedure title quoted in §9.6, "To Export a Beat from RAM
+over MIDI." Direct hardware confirmation this session: the Tempest's actual
+on-screen Save/Load menu item just reads **"Export Beat over MIDI"** - no
+"in RAM."
+
+Firmware evidence backs this. Main's firmware
+(`Tempest_Main_1.5.0.2.raw`) contains two uncompressed confirmation-screen
+strings already noted as known in the firmware-analysis doc §5.2 -
+`"Press 'Soft Key 1' to export Init Sound template over MIDI"` and the Init
+Beat equivalent - both read "over MIDI" with no "RAM" qualifier. The main
+Export-menu string table itself (a separate, still-undecoded
+compressed/tokenized region, distinct from the plain confirmation-screen
+strings) shows a bare `"over "` fragment immediately following the
+`"Export"`/type-name fragments, with no `"RAM"` token anywhere nearby.
+
+The manual's procedure *title* is still an accurate description of what the
+feature does - export from the live RAM edit buffer, as opposed to a saved
+Flash file (§9.6's "Export saved file over MIDI" alternate path) - it is
+just not verbatim UI text. README's instructional steps (the Sound/Beat/
+Project dump procedures, and the beat-mapper Step 1 procedure) are now
+corrected to drop "in RAM" from the on-screen label. The session narratives
+elsewhere in this doc (§9.4-9.6 in particular) are left as written, since
+they record what was actually typed/read at the time, not a live
+instruction to follow.
+
 ---
 
 ## Suggested next steps for this repo

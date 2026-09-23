@@ -23,7 +23,7 @@ question above.
 Individual-note export is the only method with a proven track record:
 
 1. Export each note as its own single-note Beat (mute all other tracks,
-   **Save/Load → Export Beat in RAM over MIDI**).
+   **Save/Load → Export Beat over MIDI**).
 2. Verify each capture's note count from file size before trusting it -
    `cmd/capture-tmp` does this automatically (`5925 + 8×N` raw bytes for
    N notes), or use `tempest_export_wizard`.
