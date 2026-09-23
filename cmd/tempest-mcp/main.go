@@ -1,5 +1,6 @@
-// Command tempest-mcp is an MCP server that connects Claude to the DSI Tempest drum machine.
-// It runs on stdio and is registered in claude_desktop_config.json.
+// Command tempest-mcp is an MCP server that connects Claude to the DSI
+// Tempest drum machine. It runs on stdio and is registered in
+// claude_desktop_config.json.
 //
 // Usage:
 //

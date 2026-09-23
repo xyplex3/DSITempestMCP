@@ -1,4 +1,5 @@
-// Package pattern defines the Tempest beat/step data structures and step-grid notation.
+// Package pattern defines the Tempest beat/step data structures and
+// step-grid notation.
 package pattern
 
 import "fmt"

@@ -1,6 +1,7 @@
 // Package sound provides parameter-level operations on Tempest sound data.
 // The Tempest sound parameter block is an unescaped ~132-byte slice; this
-// package operates on those raw bytes without requiring named-parameter offsets.
+// package operates on those raw bytes without requiring named-parameter
+// offsets.
 package sound
 
 // Morph linearly interpolates two parameter blocks.

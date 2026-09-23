@@ -759,9 +759,10 @@ field (`sysex.KitNameOffset`). Factory sounds use `/S/Category/Name` prefixes
 > (an unofficial browser-based Tempest editor) and a companion
 > [SysEx bit map](https://gist.github.com/fadeddata/c39a3b4b10e1e51af58e49ef74aca116),
 > cross-checked against this repo's prior baseline, KnobKraft Orm (Christof
-> Ruch, 2022). Still unconfirmed: the RAM (0x60) bit-packed name field, the
-> 0x5C/0x5E scheme specifically (assumed uniform with the rest, not
-> independently decoded), and everything past `KitSequencerOffset`
+> Ruch, 2022). The RAM (0x60) bit-packed name field is now confirmed (see
+> docs/sysex-tempest-format.md §9.9). Still unconfirmed: the 0x5C/0x5E
+> scheme specifically (assumed uniform with the rest, not independently
+> decoded), and everything past `KitSequencerOffset`
 > (step/track/gate data - needs a real `beat-mapper session` capture run, not
 > just existing files). Full details in
 > **[docs/sysex-tempest-format.md](docs/sysex-tempest-format.md)**.

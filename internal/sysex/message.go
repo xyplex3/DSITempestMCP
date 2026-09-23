@@ -47,6 +47,38 @@ const (
 	KitPadEntryLen     = 30
 	KitPadEntryCount   = 32
 	KitSequencerOffset = KitPadTableOffset + KitPadEntryLen*KitPadEntryCount // 1012
+
+	// RAM (0x60) Sound name field — a bit offset, not a byte offset. Confirmed
+	// against 46 real hardware-captured RAM dumps (see
+	// docs/sysex-tempest-format.md §4): 20 characters, 7 bits each, packed
+	// starting at absolute bit 880 of the unescaped payload, using this
+	// package's own bit-0-is-LSB convention (see SoundParamBit) for both the
+	// bit index within each byte and the assembly order of each 7-bit
+	// character. Not byte-aligned and not null-terminated — trim trailing
+	// spaces instead.
+	SoundNameBitOffset = 880
+	SoundNameLen       = 20
+
+	// Note record layout, relative to a kit block's own start (offset 0).
+	// Confirmed for a single active note (docs/sysex-tempest-format.md
+	// §9.1-9.3); records are stored back-to-back starting here with no
+	// gaps. Applies both to a standalone Beat/Kit (0x5F) and to each kit
+	// block embedded in a Project (0x61) dump (§9.10).
+	KitNoteRecordOffset = 1077
+	KitNoteRecordLen    = 10
+
+	// Project (0x61) layout — see docs/sysex-tempest-format.md §9.10.
+	// ProjectHeaderLen is the size of the project-level header preceding
+	// the first kit block. KitBlockBaseSize is a kit block's unescaped size
+	// with zero active notes; each active note adds KitBlockBytesPerNote
+	// bytes. Confirmed against one real Project sample where every block
+	// had 0 or 1 notes — the multi-note case is unverified (§9.4/§9.7), so
+	// a block decoded with more than one note should be treated with the
+	// same caution as any other unconfirmed multi-note result.
+	ProjectHeaderLen     = 349
+	BeatsPerProject      = 16
+	KitBlockBaseSize     = 5174
+	KitBlockBytesPerNote = 10
 )
 
 // MessageType classifies a raw SysEx byte slice by its Tempest message type.
@@ -115,14 +147,16 @@ func Identify(raw []byte) MessageType {
 
 // headerLen returns the number of leading bytes — F0, manufacturer, device,
 // type, and (for some types) one extra byte — before the escaped payload
-// begins. FLASH (0x63) and alternate-bank sound (0x5C) carry that extra byte;
-// for FLASH it is a name/path-length prefix (see BuildFLASHDump), confirmed
-// by decoding real hardware captures. Every other recognised type has a
-// plain 4-byte header. Source: TempestEdit's headerLen()
-// (docs/sysex-tempest-format.md §2).
+// begins. FLASH (0x63), alternate-bank sound (0x5C), and project dump (0x61)
+// carry that extra byte. For FLASH and 0x61 it is a name/path-length prefix
+// (see BuildFLASHDump): confirmed for 0x61 against a real hardware capture
+// where byte[4] = 0x1c = 28 = the 27-char project path + its null terminator
+// (docs/sysex-tempest-format.md §10). For 0x5C it is a bank slot (see
+// Location). Every other recognised type has a plain 4-byte header. Source:
+// TempestEdit's headerLen() (docs/sysex-tempest-format.md §2).
 func headerLen(t MessageType) int {
 	switch t {
-	case TypeFLASHSound, TypeAlternateSound:
+	case TypeFLASHSound, TypeAlternateSound, TypeProjectDump:
 		return 5
 	default:
 		return 4
@@ -178,16 +212,16 @@ func Unescape(raw []byte) []byte {
 	}
 }
 
-// ExtractName reads the sound/beat name from an unescaped payload block.
-// Returns ("", 0) for RAM sounds (bit-packed name field location unconfirmed
-// — see docs/sysex-tempest-format.md §4). For Beat/Kit dumps, reads the
-// fixed-offset space-padded name field (see KitNameOffset). Everything else
-// (FLASH, Project) reads a null-terminated ASCII run from the start of the
-// block.
+// ExtractName reads the sound/beat name from an unescaped payload block. For
+// RAM sounds, decodes the bit-packed field at SoundNameBitOffset (nameEndIdx
+// is always 0 — the field isn't byte-aligned, so there's no meaningful byte
+// index to report). For Beat/Kit dumps, reads the fixed-offset space-padded
+// name field (see KitNameOffset). Everything else (FLASH, Project) reads a
+// null-terminated ASCII run from the start of the block.
 func ExtractName(unescaped []byte, msgType MessageType) (name string, nameEndIdx int) {
 	switch msgType {
 	case TypeRAMSound:
-		return "", 0
+		return extractRAMName(unescaped), 0
 	case TypeBeatDump:
 		return extractKitName(unescaped), KitNameOffset + KitNameLen
 	}
@@ -208,6 +242,133 @@ func extractKitName(unescaped []byte) string {
 		return ""
 	}
 	return strings.TrimRight(string(unescaped[KitNameOffset:KitNameOffset+KitNameLen]), " \x00")
+}
+
+// extractKitShortName reads the fixed-offset, space-padded 8-char short
+// name field of a Beat/Kit unescaped payload — see KitShortNameOffset.
+func extractKitShortName(unescaped []byte) string {
+	if len(unescaped) < KitShortNameOffset+KitShortNameLen {
+		return ""
+	}
+	return strings.TrimRight(string(unescaped[KitShortNameOffset:KitShortNameOffset+KitShortNameLen]), " \x00")
+}
+
+// NoteRecord is one decoded 80-bit (10-byte) sequencer note record from a
+// kit block's note-record region — see KitNoteRecordOffset.
+type NoteRecord struct {
+	Track    int // 0-based track index: 0-15 = A1-A16, 16-31 = B1-B16
+	Step     int // 1-based step position within the beat
+	Velocity int // 0-127, noisy/tap-driven — informational only, not exact
+}
+
+// KitNoteRecords decodes note records from kit (a kit block's own bytes,
+// starting at its offset 0), reading consecutively from KitNoteRecordOffset
+// and stopping at the first position that doesn't match the confirmed
+// record shape: marker byte 0x77 at relative offset 3, and the track byte
+// at relative offset 4 with its high bit set. This matches the layout
+// confirmed for a single active note (docs/sysex-tempest-format.md
+// §9.2/§9.3); results with more than one record reflect an unverified
+// extrapolation to the multi-note case (§9.4/§9.7), not an independently
+// confirmed decode.
+func KitNoteRecords(kit []byte) []NoteRecord {
+	var records []NoteRecord
+	for offset := KitNoteRecordOffset; offset+KitNoteRecordLen <= len(kit); offset += KitNoteRecordLen {
+		if kit[offset+3] != 0x77 {
+			break
+		}
+		trackByte := kit[offset+4]
+		if trackByte&0x80 == 0 {
+			break
+		}
+		records = append(records, NoteRecord{
+			Track:    int(trackByte & 0x7F),
+			Step:     int(kit[offset+2])/3 + 1,
+			Velocity: int(kit[offset+5]),
+		})
+	}
+	return records
+}
+
+// ProjectBeat is one decoded kit block from a Project (0x61) dump.
+type ProjectBeat struct {
+	Index     int // 0-based position within the project (0-15)
+	Name      string
+	ShortName string
+	BPM       float64
+	Swing     float64
+	// Notes holds the decoded note records for this beat. See
+	// KitNoteRecords' doc comment: entries beyond the first are an
+	// unverified extrapolation, not a confirmed decode.
+	Notes []NoteRecord
+}
+
+// ProjectBeats decodes every kit block from an unescaped Project (0x61)
+// payload. See docs/sysex-tempest-format.md §9.10 for the confirmed
+// layout: ProjectHeaderLen bytes of project header, then BeatsPerProject
+// kit blocks packed back-to-back with no gaps, each block's own length
+// depending on its decoded note count (KitBlockBaseSize +
+// KitBlockBytesPerNote per note). Because each block's length depends on
+// its own note count, a wrong count for one block — most likely from the
+// unverified multi-note case — misaligns every later block; on such
+// misalignment this returns the beats successfully decoded so far
+// alongside a non-nil error rather than silently returning garbage for
+// the rest.
+func ProjectBeats(unescaped []byte) ([]ProjectBeat, error) {
+	if len(unescaped) < ProjectHeaderLen {
+		return nil, fmt.Errorf("payload is %d bytes, shorter than the %d-byte project header",
+			len(unescaped), ProjectHeaderLen)
+	}
+	// Bounds the note scan below so a run of stray marker-shaped bytes
+	// can't be misread as extending into later blocks' own data.
+	const maxNotesPerKitBlock = 256
+
+	offset := ProjectHeaderLen
+	beats := make([]ProjectBeat, 0, BeatsPerProject)
+	for i := range BeatsPerProject {
+		if offset+KitBlockBaseSize > len(unescaped) {
+			return beats, fmt.Errorf("beat %d: payload truncated at offset %d — only %d of %d beats decoded",
+				i, offset, len(beats), BeatsPerProject)
+		}
+		scanEnd := min(offset+KitBlockBaseSize+maxNotesPerKitBlock*KitBlockBytesPerNote, len(unescaped))
+		notes := KitNoteRecords(unescaped[offset:scanEnd])
+		blockLen := KitBlockBaseSize + KitBlockBytesPerNote*len(notes)
+		if offset+blockLen > len(unescaped) {
+			return beats, fmt.Errorf("beat %d: decoded %d note(s) implies a %d-byte block past the payload end — likely misaligned",
+				i, len(notes), blockLen)
+		}
+		kit := unescaped[offset : offset+blockLen]
+		beats = append(beats, ProjectBeat{
+			Index:     i,
+			Name:      extractKitName(kit),
+			ShortName: extractKitShortName(kit),
+			BPM:       KitBPM(kit),
+			Swing:     KitSwing(kit),
+			Notes:     notes,
+		})
+		offset += blockLen
+	}
+	return beats, nil
+}
+
+// extractRAMName reads the bit-packed, space-padded 20-char name field of a
+// RAM (0x60) Sound unescaped payload — see SoundNameBitOffset. Confirmed
+// against 46 real hardware captures (docs/sysex-tempest-format.md §4).
+func extractRAMName(unescaped []byte) string {
+	var sb strings.Builder
+	for c := range SoundNameLen {
+		var val byte
+		for b := range 7 {
+			globalBit := SoundNameBitOffset + c*7 + b
+			byteIdx := globalBit / 8
+			if byteIdx >= len(unescaped) {
+				break
+			}
+			bit := (unescaped[byteIdx] >> (globalBit % 8)) & 1
+			val |= bit << b
+		}
+		sb.WriteByte(val)
+	}
+	return strings.TrimRight(sb.String(), " \x00")
 }
 
 // KitBPM decodes the BPM field of an unescaped Beat/Kit (0x5F) payload.
@@ -253,7 +414,10 @@ func Fingerprint(raw []byte) (string, error) {
 
 	switch t {
 	case TypeRAMSound:
-		// No confirmed name field — hash the escaped payload directly.
+		// Hash the escaped payload directly, including the name bits (see
+		// SoundNameBitOffset) — RAM dumps are live edit-buffer captures, not
+		// saved/named sounds, so leaving the name in scope for dedup matches
+		// existing behavior and callers' expectations.
 		p := Payload(raw)
 		if p == nil {
 			return "", fmt.Errorf("RAM dump too short")

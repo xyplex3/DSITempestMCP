@@ -10,6 +10,26 @@ import (
 	"tempest-mcp/internal/sysex"
 )
 
+// packRAMName builds a minimal unescaped RAM payload with name packed at
+// sysex.SoundNameBitOffset, for round-trip-testing sysex.ExtractName.
+func packRAMName(t *testing.T, name string) []byte {
+	t.Helper()
+	padded := name + strings.Repeat(" ", sysex.SoundNameLen-len(name))
+	totalBits := sysex.SoundNameBitOffset + sysex.SoundNameLen*7
+	buf := make([]byte, (totalBits+7)/8)
+	for c := 0; c < len(padded); c++ {
+		val := padded[c]
+		for b := range 7 {
+			if val&(1<<b) == 0 {
+				continue
+			}
+			globalBit := sysex.SoundNameBitOffset + c*7 + b
+			buf[globalBit/8] |= 1 << (globalBit % 8)
+		}
+	}
+	return buf
+}
+
 // TestIdentify verifies that Identify classifies SysEx messages correctly.
 func TestIdentify(t *testing.T) {
 	tests := []struct {
@@ -252,10 +272,21 @@ func TestExtractName(t *testing.T) {
 		wantNameEnd int
 	}{
 		{
-			name:        "RAM sound has no name",
+			name:        "RAM: too short to reach the bit-packed name field",
 			unescaped:   []byte{0x01, 0x02, 0x03},
 			msgType:     sysex.TypeRAMSound,
 			wantName:    "",
+			wantNameEnd: 0,
+		},
+		{
+			// Bit-packed at SoundNameBitOffset (880), 7 bits/char, this
+			// package's bit-0-is-LSB convention. See
+			// docs/sysex-tempest-format.md §4 — confirmed against 46 real
+			// RAM captures.
+			name:        "RAM: bit-packed name field at offset 880",
+			unescaped:   packRAMName(t, "Basic"),
+			msgType:     sysex.TypeRAMSound,
+			wantName:    "Basic",
 			wantNameEnd: 0,
 		},
 		{
@@ -551,7 +582,9 @@ func TestExtractSoundsFromProject(t *testing.T) {
 	})
 
 	t.Run("minimal project dump with no matching sounds returns empty", func(t *testing.T) {
-		// Construct an empty project message: payload = Escape7Plus1([]).
+		// Shape: F0 mfr dev 0x61 <pathLen=0> <one escaped byte> F7 — the
+		// 5-byte header (pathLen at [4]) leaves a single payload byte, which
+		// unescapes to nothing (no loop iterations in Unescape7Plus1).
 		msg := []byte{0xF0, sysex.ManufacturerID, sysex.DeviceID, 0x61, 0x00, 0x00, 0xF7}
 		results, err := sysex.ExtractSoundsFromProject(msg, 70, "")
 		if err != nil {
@@ -561,6 +594,53 @@ func TestExtractSoundsFromProject(t *testing.T) {
 			t.Errorf("got %d results, want 0", len(results))
 		}
 	})
+}
+
+// TestProjectDumpHeaderLen verifies the 0x61 extra header byte: a project
+// dump's escaped payload begins after a 5th header byte that is a
+// name/path-length prefix — confirmed against a real hardware capture where
+// byte[4] = 0x1c = 28 = the 27-char project path plus its null terminator
+// (docs/sysex-tempest-format.md §10). Payload and Unescape must skip that
+// byte, and ExtractName reads the null-terminated path from the start of the
+// unescaped block.
+func TestProjectDumpHeaderLen(t *testing.T) {
+	path := "/P/Projects 9/Test"
+	nameBytes := append([]byte(path), 0x00) // terminator, counted in pathLen like FLASH
+	params := []byte{0x01, 0x02, 0x03}
+	want := append(append([]byte{}, nameBytes...), params...)
+	escaped := sysex.Escape7Plus1(want)
+
+	msg := []byte{0xF0, sysex.ManufacturerID, sysex.DeviceID, 0x61, byte(len(nameBytes))}
+	msg = append(msg, escaped...)
+	msg = append(msg, 0xF7)
+
+	p := sysex.Payload(msg)
+	if !bytes.Equal(p, escaped) {
+		t.Fatalf("Payload() = %v, want the escaped body after the 5-byte header", p)
+	}
+
+	un := sysex.Unescape(msg)
+	// Unescape returns full 7-byte groups, so it may carry trailing zero
+	// padding when len(want) is not a multiple of 7 — compare the real
+	// content and require the remainder to be zeros.
+	if len(un) < len(want) || !bytes.Equal(un[:len(want)], want) {
+		t.Fatalf("Unescape() = %v, want %v (plus round-trip padding)", un, want)
+	}
+	for _, b := range un[len(want):] {
+		if b != 0x00 {
+			t.Fatalf("Unescape() padding = %v, want all zeros", un[len(want):])
+		}
+	}
+
+	name, end := sysex.ExtractName(un, sysex.TypeProjectDump)
+	// nameEndIdx is the index of the null terminator itself (== len(path)),
+	// not len(nameBytes) — matching every other ExtractName case in this
+	// file (see "FLASH: null-terminated name" above) and what ExtractParams
+	// actually relies on (it reads from nameEnd+1, i.e. right after this
+	// byte).
+	if name != path || end != len(path) {
+		t.Errorf("ExtractName() = %q, %d; want %q, %d", name, end, path, len(path))
+	}
 }
 
 // TestSplitMessages verifies that SplitMessages splits a raw byte stream

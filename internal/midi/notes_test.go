@@ -1,6 +1,7 @@
 package midi_test
 
 import (
+	"context"
 	"strings"
 	"testing"
 
@@ -83,4 +84,90 @@ func TestListPadNames(t *testing.T) {
 			t.Errorf("ListPadNames() missing %q", want)
 		}
 	}
+}
+
+// TestTriggerPad verifies error propagation without a live MIDI connection:
+// an unknown pad name fails before ever touching the device, while a known
+// pad name on a disconnected device fails at the send step instead.
+func TestTriggerPad(t *testing.T) {
+	tests := []struct {
+		name    string
+		pad     string
+		wantErr string
+	}{
+		{name: "unknown pad rejected before connecting", pad: "cowbell", wantErr: "unknown pad"},
+		{name: "known pad fails at send on disconnected device", pad: "kick", wantErr: "not connected"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			d := midi.New(midi.DeviceConfig{Channel: 10})
+			err := d.TriggerPad(context.Background(), tt.pad, 100, 10)
+			if err == nil {
+				t.Fatalf("TriggerPad(%q) expected error, got nil", tt.pad)
+			}
+			if !strings.Contains(err.Error(), tt.wantErr) {
+				t.Errorf("error = %q, want to contain %q", err.Error(), tt.wantErr)
+			}
+		})
+	}
+}
+
+// TestTriggerNote verifies that TriggerNote on a disconnected device fails
+// with a "not connected" error rather than blocking or panicking.
+func TestTriggerNote(t *testing.T) {
+	d := midi.New(midi.DeviceConfig{Channel: 10})
+	err := d.TriggerNote(context.Background(), 36, 100, 10)
+	if err == nil {
+		t.Fatal("TriggerNote() expected error, got nil")
+	}
+	if !strings.Contains(err.Error(), "not connected") {
+		t.Errorf("error = %q, want to contain %q", err.Error(), "not connected")
+	}
+}
+
+// TestPlaySequence verifies event sorting and error propagation on a
+// disconnected device. Every case uses beat 1 for the earliest event so the
+// resulting zero wait keeps the test fast and deterministic — see
+// PlaySequence's beatOffsetMS computation.
+func TestPlaySequence(t *testing.T) {
+	t.Run("empty events returns nil without connecting", func(t *testing.T) {
+		d := midi.New(midi.DeviceConfig{Channel: 10})
+		if err := d.PlaySequence(context.Background(), nil, 120); err != nil {
+			t.Errorf("PlaySequence(nil) = %v, want nil", err)
+		}
+	})
+
+	t.Run("sorts events by beat before playing", func(t *testing.T) {
+		d := midi.New(midi.DeviceConfig{Channel: 10})
+		events := []midi.SequenceEvent{
+			{Pad: "kick", Beat: 3},
+			{Pad: "snare", Beat: 1},
+			{Pad: "clap", Beat: 2},
+		}
+		err := d.PlaySequence(context.Background(), events, 120)
+		if err == nil {
+			t.Fatal("PlaySequence() expected error from disconnected device, got nil")
+		}
+		// The lowest-beat event (snare, beat 1) must be attempted first
+		// regardless of its position in the input slice.
+		if !strings.Contains(err.Error(), "event at beat 1") {
+			t.Errorf("error = %q, want to contain %q (sorting not applied)",
+				err.Error(), "event at beat 1")
+		}
+	})
+
+	t.Run("wraps the underlying trigger error with the beat number", func(t *testing.T) {
+		d := midi.New(midi.DeviceConfig{Channel: 10})
+		events := []midi.SequenceEvent{{Note: 36, Beat: 1}}
+		err := d.PlaySequence(context.Background(), events, 120)
+		if err == nil {
+			t.Fatal("PlaySequence() expected error, got nil")
+		}
+		if !strings.Contains(err.Error(), "event at beat 1") ||
+			!strings.Contains(err.Error(), "not connected") {
+			t.Errorf("error = %q, want to contain both %q and %q",
+				err.Error(), "event at beat 1", "not connected")
+		}
+	})
 }

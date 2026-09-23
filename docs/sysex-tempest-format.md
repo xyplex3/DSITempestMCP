@@ -238,6 +238,11 @@ reads back as valid ASCII (see below) - that is a fast, self-verifying test.
 
 ## 4. Name field encoding (Sound / RAM body)
 
+**Confirmed for RAM (`0x60`) - see §9.9.** The theory below (bit offset 880,
+7 bits/char) is correct; the only thing wrong in earlier testing was the
+bit-numbering convention. `internal/sysex/message.go`'s `ExtractName` now
+implements it.
+
 For a `0x60` Sound/Beat body, TempestEdit does **not** treat the name as
 null-terminated ASCII at the start of the payload (as this repo's
 `ExtractName` assumes for FLASH/Project, and explicitly skips for RAM).
@@ -260,12 +265,12 @@ but it is the `path` field described in §2 (`/S/Category/Name`, length-prefixed
 by the 5th header byte), not a null-terminated field inside the parameter
 block.
 
-This means this repo's current name handling is likely wrong in two
-different ways for two different message types:
+This means this repo's current name handling was wrong in two different
+ways for two different message types:
 
-- `ExtractName` returns `("", 0)` for RAM (`0x60`) - but RAM dumps do appear
-  to carry a name, just bit-packed rather than a leading null-terminated
-  string.
+- `ExtractName` returned `("", 0)` for RAM (`0x60`) - **fixed, see §9.9**:
+  RAM dumps do carry a name, bit-packed rather than a leading
+  null-terminated string.
 - `ExtractName`/`ExtractParams` treat FLASH/Project names as a leading
   null-terminated ASCII run - TempestEdit's model instead uses a
   length-prefixed path string only for FLASH, addressed via the 5th header
@@ -1257,6 +1262,157 @@ packing produces the corrupted-looking pattern at 0x556. Neither is solved
 here - this is progress on a "substantial task on its own," not a
 completed one.
 
+### 9.9 Confirmed: the RAM (`0x60`) name field, and why §4's theory looked dead
+
+§4's bit-offset-880 theory (20 characters, 7 bits each, starting at absolute
+bit 880 of the unescaped payload) is correct - it was the bit-numbering
+convention used to test it that was wrong, not the offset or field width.
+
+Tested against 46 real RAM (`0x60`) edit-buffer captures already sitting in
+`~/Tempest/` (exported at various points, named by hand by their owner) -
+not new captures, just a fresh look at files the "30 real captures" test
+referenced in the old "Suggested next steps" item 8 either didn't have
+access to or decoded with the wrong bit order:
+
+- Extracting 20×7 bits starting at bit 880, using **this package's own
+  bit-0-is-LSB convention** (see `SoundParamBit`'s doc comment) for both the
+  bit index within a byte and the assembly order of each 7-bit character,
+  produces a fully printable, correctly space-padded, 20-character string
+  for **all 46 of 46** files. Three other bit-order combinations (MSB-first
+  bit indexing, or MSB-first character assembly) all produced binary noise
+  on the same files - the earlier failed attempt almost certainly used one
+  of those.
+- 34 of the 46 decode to `"Basic"` - not a coincidence or a bug: `"Basic"`
+  is a plausible common DSI factory-default starting patch, and none of
+  these captures were ever explicitly re-saved/renamed on the Tempest
+  itself before the RAM/edit-buffer export - only the **file** was renamed
+  afterward by whoever exported it, which the name field has no way of
+  knowing about.
+- The other 12 decode to distinct, real-looking sound-design names with no
+  garbage characters: `"FM-FX Kick"`, `"Bass Garage3"`, `"Pad of PATCH"`,
+  `"DR110 Hand Clap"`, `"Goodfella Kick"`, `"Damage Kick"`,
+  `"Cocky 808 BD"`, `"BA~Punchy BD 1"`, `"Acidic BD"`, and one that reads
+  almost but not quite clean (`"Cvmbalic@SFX"` - very likely
+  `"Cymbalic SFX"` with one bit wrong, not investigated further). Several
+  are near-exact matches to their filenames (`Tempest_Clap_DR110.syx` →
+  `"DR110 Hand Clap"`), which independently corroborates the decode -
+  garbled noise wouldn't correlate with human-chosen filenames like that.
+
+**Implemented**: `internal/sysex/message.go`'s `ExtractName` now decodes
+this for `TypeRAMSound` via `extractRAMName`/`SoundNameBitOffset` instead of
+returning `("", 0)`. Covered by a round-trip test in
+`message_test.go`. `Fingerprint` deliberately still hashes RAM dumps
+including the name bits - see its updated comment for why that's still the
+right call for edit-buffer captures specifically.
+
+Not yet done: `tempest_read_sound_params`'s output doesn't currently
+surface this name (it only prints `SoundParams` table entries) - wiring it
+in is a small follow-up, not attempted here to keep this change scoped to
+the decode itself.
+
+### 9.10 Solved: the `0x61` Project format (2026-09-22, GLM session)
+
+§9.8's three puzzles all resolve to a single cause: **the `0x61` Project
+dump carries an extra header byte at message[4], and it is a path-length
+prefix exactly like FLASH's (0x63)** - `headerLen()` returning 4 for `0x61`
+unescaped the payload one byte out of alignment, and that misalignment
+produced every "corrupted" observation in §9.8.
+
+Verified against `flash_export_test.syx` (95040 raw bytes; 95034-byte wire
+payload after the 5-byte header, 83154 bytes unescaped):
+
+1. **The extra header byte is a path-length prefix.** message[4] = 0x1c =
+   28 = the length of the 27-char ASCII path `/P/Projects 9/Basrc Wrooeht`
+   plus its null terminator - the same name+terminator convention already
+   confirmed for FLASH 0x63 (`BuildFLASHDump`). With that byte skipped, the
+   payload unescapes cleanly with the same collector-first scheme, and
+   re-escaping the unescaped payload reproduces the wire byte-for-byte - so
+   there is no second packing layer and no bit shift.
+2. **§9.8's "corrupted preamble at 0x556" was the misalignment.** The
+   "periodic extra bytes (`0x80`/`0x8a`/`0x8c`-ish)" were collector bytes;
+   the sequencer-region preamble anchor appears clean at relative offset
+   1012 of each embedded block once unescaped at the correct alignment.
+3. **The payload is a 349-byte project header followed by 16 kit blocks**,
+   each in the exact `0x5F` kit layout: bpm@+4, swing@+6, name@+24
+   (20-char space-padded), short name@+44 (8 chars), pad table, note
+   records at +1077 with +10 bytes per note. Block base size 5174 (0
+   notes), 5184 with 1 note. All 16 blocks in this sample are named
+   "Initialize" + short "Basic" - confirming §9.8's Beat-0 name lead. There
+   is no tail after block 16: payload = header + 16 blocks exactly.
+4. **§9.8's "32-byte prefix before the header" was an artifact of the
+   misaligned read** - in the correctly-unescaped payload the header starts
+   at byte 0 with the path itself.
+
+Project header field map (structure confirmed; labels inferred, mostly
+unconfirmed):
+
+- 0..27: null-terminated path (28 incl. null = message[4] value)
+- 29-30: `0xa2 0x59` (unknown); 32: `0x05` (unknown)
+- 35-36: BPM raw, big-endian (`0x04b0` = 120.0 - project-level; the beats
+  themselves are 110.0)
+- 39: `0x03` (swing, matches the beats' swing 3); 40: `0x02` (unknown)
+- 67-98: `0xFF` × 32 (32 empty slots - plausibly a play-list beat table)
+- 99-119: 20-char space-padded name "Basrc Wrooeht" (project name,
+  kit-style)
+- 120: `0x02`; 122: `0x01` (unknown)
+- 123-143: 20-char space-padded name "Play List 1" (OS 1.2 Play Lists)
+- 144-342: zeros; 343-348: `0xfe` × 6
+
+Note records inside project blocks decode identically to standalone kits
+(byte3 = `0x77` marker, byte4 = `0x80|track`, byte2 = step×3, byte5 =
+velocity). This sample's beats 1/2 carry one note each on track `0x82`
+(A3) at steps 1/2 - matching §9.5's documented screen state exactly - and
+beat 1's velocity (39) exactly matches `kick_a3_s1_fresh.syx` (the old A3
+test capture), which is more evidence that Project exports reflect
+saved/stale state rather than the live edit buffer.
+
+**`0x5C` needs the same skip:** each `0x5C` per-beat message also carries
+an extra byte at [4] - with it skipped, kit names decode clean at exactly
+offset 24. `headerLen(TypeAlternateSound) = 5` was already correct; only
+the `0x61` case was wrong. For `0x5F`, headerLen = 4 is confirmed correct
+(msg[4] = `0x00`; skip=0 roundtrips and decodes names). One methodological
+note: a byte-exact re-escape roundtrip is NOT by itself a sufficient
+alignment test - for `0x5F`, skip=1 also roundtrips (degenerate
+leading-zero collector), but only skip=0 decodes content. Decide alignment
+by decoded content; confirm with roundtrip.
+
+**Implemented**: `headerLen(TypeProjectDump)` now returns 5 (see
+`internal/sysex/message.go`), covered by a `TestProjectDumpHeaderLen`
+round-trip test. This changes `Payload`/`Unescape`/`Fingerprint`/
+`ExtractSoundsFromProject` for `0x61` - fingerprints computed from `0x61`
+dumps before this fix were taken from misaligned data and will differ.
+
+**Closed 2026-09-22 (later):** the stored project name "Basrc Wrooeht"
+looked scrambled, but the user confirmed the project really is named
+"Basrc Wrooeht" on the hardware - so the name decodes byte-exact as
+entered, not a storage artifact. No open item remains here.
+
+**This unblocks:** `tempest_analyze_project` and
+`tempest_decode_project_beats` (read-only, no hardware needed) - the full
+16-beat contents of a project dump are now mechanically readable.
+
+**Implemented (2026-09-22, later session):** `tempest_decode_project_beats`
+is now a registered MCP tool (`internal/server/server.go`), backed by new
+`sysex.ProjectBeats`/`sysex.KitNoteRecords` (`internal/sysex/message.go`,
+new `ProjectHeaderLen`/`BeatsPerProject`/`KitBlockBaseSize`/
+`KitBlockBytesPerNote`/`KitNoteRecordOffset` constants). Verified against
+`flash_export_test.syx`: decodes all 16 beats, matching this section's
+name/BPM/swing claims exactly and the step/track values for beats 1-2's
+note (track A3, steps 1/2) exactly. Velocity for those two notes decodes
+as 28/79 - not the 39 this section originally stated for beat 1 - and a
+second, independent decode (GLM session) confirmed 28/79 too, so treat 39
+above as a write-up error, not a real discrepancy. Because each kit
+block's length depends on its own decoded note count, `ProjectBeats` stops
+and returns an error (with the beats decoded so far) rather than silently
+misdecoding everything past a block whose note count is wrong - most
+relevant for the still-unverified multi-note case (§9.4/§9.7).
+
+**Also implemented:** `tempest_analyze_project` - a project-level
+diagnostic summary (byte size, how many of the 16 beats are still at
+default "Initialize" state vs. have content, total note count, the same
+caveats as above) built on the same `sysex.ProjectBeats`. Use
+`tempest_decode_project_beats` instead for full per-beat/per-note detail.
+
 ---
 
 ## Suggested next steps for this repo
@@ -1282,6 +1438,11 @@ Done as of this session (see §7 and `internal/sysex/`):
    stride. Confirmed across A1-A3; see §9's own caveats before treating it
    as the final word (untested at higher indices, across the bank boundary,
    or with multiple simultaneous notes).
+7. ~~Investigate the RAM (`0x60`) name field~~ (§4) - done, see §9.9: the
+   bit-offset-880 theory was right, the bit-numbering convention used to
+   test it before was wrong. `ExtractName` now decodes it; confirmed against
+   46 real captures. `tempest_read_sound_params` doesn't surface it yet
+   (small follow-up, not done here).
 
 Still open, in priority order:
 
@@ -1301,16 +1462,14 @@ Still open, in priority order:
    has been run under controlled conditions yet. Also still worth trying:
    Export Beat immediately after Save Beat to
    Flash (does saving first change anything?).
-2. **Decode the `0x61` Project format** (§9.6, progress in §9.8) - a real
-   sample exists (`flash_export_test.syx`, from "Export saved file over
-   MIDI" on a flash-saved Project, *not* the RAM export path used by
-   §9.5's 17-message finding). §9.8 found a 32-byte prefix before the
-   project header and Beat 0's likely name/position, but the naive
-   fixed-stride guess for finding beats 2-16 fails, and the sequencer
-   region shows a corrupted, not-simply-bit-shifted version of the
-   otherwise-reliable pad-table-adjacent anchor pattern - a real, still
-   unsolved packing puzzle specific to this format. Still a substantial
-   task on its own, but no longer completely unstarted.
+2. ~~Decode the `0x61` Project format~~ - done, see §9.10: the extra
+   header byte is a path-length prefix like FLASH's, the payload is a
+   349-byte project header + 16 kit blocks in the standard `0x5F` layout,
+   and `tempest_decode_project_beats` now decodes it mechanically. Open
+   sub-items that remain: the project-header field map beyond
+   name/bpm/swing is still mostly unconfirmed (§9.10's "labels inferred,
+   mostly unconfirmed" caveat), and the stored project name
+   ("Basrc Wrooeht") still looks scrambled with no confirmed explanation.
 3. **Figure out whether Export Project (RAM) reflects live state** (§9.5) -
    two Project exports, with a careful fresh Initialize-and-edit cycle in
    between, came back byte-identical except for 2 velocity-noise bytes, as
@@ -1335,6 +1494,5 @@ Still open, in priority order:
    the same byte offsets as `0x5F`. Not a full confirmation - no controlled
    single-variable test was run against `0x5C`/`0x5E` specifically - but no
    longer purely an assumption either.
-8. **Investigate the RAM (0x60) name field** - §4's bit-offset-880 theory
-   didn't hold up against 30 real captures; still unknown where (or if) RAM
-   dumps carry a name.
+8. ~~Investigate the RAM (0x60) name field~~ - done, see §9.9 and item 7 of
+   the "done" list above.

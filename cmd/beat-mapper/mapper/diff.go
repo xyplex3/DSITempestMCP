@@ -11,8 +11,9 @@ type DiffEntry struct {
 	Label    string // capture label, typically the stem of the changed filename
 }
 
-// Diff compares two unescaped payloads byte by byte. label is attached to every
-// entry for session log tagging. Returns an error if the slices have different lengths.
+// Diff compares two unescaped payloads byte by byte. label is attached to
+// every entry for session log tagging. Returns an error if the slices have
+// different lengths.
 func Diff(baseline, changed []byte, label string) ([]DiffEntry, error) {
 	if len(baseline) != len(changed) {
 		return nil, fmt.Errorf("length mismatch: baseline=%d changed=%d", len(baseline), len(changed))

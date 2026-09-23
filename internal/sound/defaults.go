@@ -1,7 +1,8 @@
 package sound
 
-// ParamBlockSize is the unescaped parameter block size for a FLASH (0x63) sound.
-// Matches sysex.ParamBlockSizeFLASH but is redeclared here to avoid a circular import.
+// ParamBlockSize is the unescaped parameter block size for a FLASH (0x63)
+// sound. Matches sysex.ParamBlockSizeFLASH but is redeclared here to avoid
+// a circular import.
 const ParamBlockSize = 132
 
 // DefaultBlankParams returns a 132-byte parameter block initialised with the

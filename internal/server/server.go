@@ -683,6 +683,73 @@ func (s *Server) registerSysExTools() {
 		mcp.WithString("path", mcp.Description("Path to a previously saved RAM (0x60) .syx file. Omit to wait for a live dump instead.")),
 		mcp.WithNumber("timeout_sec", mcp.Description("Seconds to wait for a live dump if path is omitted (default 30)")),
 	), s.handleReadSoundParams)
+
+	s.mcp.AddTool(mcp.NewTool("tempest_export_wizard",
+		mcp.WithDescription("Walk through exporting a Beat or Project from the Tempest correctly, catching "+
+			"the two mistakes that have repeatedly derailed real capture sessions during this project's own "+
+			"research (see docs/sysex-tempest-format.md §9.2/§9.6): confusing Export Beat with Export "+
+			"Project (they're adjacent Save/Load menu items), and skipping the required beat-selection step "+
+			"before exporting a Beat. Relay these steps to the user before calling this tool, then call it "+
+			"to wait for the dump and validate what actually arrived:\n\n"+
+			"For intent=beat:\n"+
+			"  1. In 16 Beats mode, tap the pad for the beat you want to export (do not skip this — the "+
+			"manual lists it as step one of the procedure, and it's easy to miss).\n"+
+			"  2. Recommended: press the Events key to check the Beat Events screen and confirm on-screen "+
+			"which notes are actually present, rather than trusting memory or a different screen.\n"+
+			"  3. Press Save/Load.\n"+
+			"  4. Confirm the screen reads \"Export Beat in RAM over MIDI\" — NOT \"Export Project\". These "+
+			"are adjacent menu items and this mixup has happened repeatedly in real testing.\n"+
+			"  5. Press Next, set destination to USB, press Export Now.\n\n"+
+			"For intent=project:\n"+
+			"  1. Press Save/Load.\n"+
+			"  2. Confirm the screen reads \"Export Project in RAM over MIDI\" — NOT \"Export Beat\".\n"+
+			"  3. Press Next, set destination to USB, press Export Now.\n"+
+			"  Note: this tool only validates the first incoming SysEx message. A live Project RAM export "+
+			"sends 17 separate messages (one 0x5E header + sixteen 0x5C per-beat messages) — this tool will "+
+			"only confirm the header arrived, not decode the full project. For a single self-contained "+
+			"0x61 dump, use \"Export saved file over MIDI\" from a flash-saved Project instead.\n\n"+
+			"After a Beat dump: reports the byte-count-implied note count (each note adds exactly 8 bytes "+
+			"to the raw dump; see docs/sysex-tempest-format.md §7.3) as a fact for you to check against "+
+			"what you intended — this tool does NOT claim any note configuration reliably exports correctly. "+
+			"Per docs/sysex-tempest-format.md §9.7-9.8, that's still an open research question."),
+		mcp.WithString("intent", mcp.Required(), mcp.Description("What you're exporting: \"beat\" or \"project\"")),
+		mcp.WithNumber("timeout_sec", mcp.Description("Seconds to wait for the dump (default 30)")),
+	), s.handleExportWizard)
+
+	s.mcp.AddTool(mcp.NewTool("tempest_decode_project_beats",
+		mcp.WithDescription("Decode all 16 beats from a Project (0x61) dump: name, short name, BPM, "+
+			"swing, and any detected note records, per beat. Provide path to decode a previously saved "+
+			"\"Export saved file over MIDI\" .syx file (from a flash-saved Project), or omit it to wait "+
+			"for a live dump — trigger it from Save/Load → \"Export Project in RAM over MIDI\" → Next → "+
+			"USB → Export Now (a live RAM export sends 17 separate messages; this tool only decodes a "+
+			"single self-contained 0x61 dump, so prefer the saved-file export path). Layout confirmed "+
+			"against one real hardware sample — see docs/sysex-tempest-format.md §9.10. "+
+			"IMPORTANT caveats: (1) a beat reported with more than one note record reflects an unverified "+
+			"extrapolation of the single-note-confirmed record format, not an independently confirmed "+
+			"decode — see §9.4/§9.7. (2) Per §9.5/§9.10, a Project export may reflect stale/saved state "+
+			"rather than the Tempest's live edit buffer — don't assume it matches what's currently on "+
+			"screen without checking. (3) If beat contents look garbled from some point onward, the most "+
+			"likely cause is an earlier beat's note count being misdecoded, which misaligns every beat "+
+			"after it (blocks are packed back-to-back with no fixed spacing) — this tool reports that as "+
+			"an error rather than returning garbage silently."),
+		mcp.WithString("path", mcp.Description("Path to a previously saved Project (0x61) .syx file. Omit to wait for a live dump instead.")),
+		mcp.WithNumber("timeout_sec", mcp.Description("Seconds to wait for a live dump if path is omitted (default 30)")),
+	), s.handleDecodeProjectBeats)
+
+	s.mcp.AddTool(mcp.NewTool("tempest_analyze_project",
+		mcp.WithDescription("Diagnostic summary of a Project (0x61) dump: byte size, how many of the "+
+			"16 beats are still at the default \"Initialize\" state vs. have content, total note "+
+			"records across the whole project, and the same research caveats as "+
+			"tempest_decode_project_beats (stale-vs-live-state uncertainty, unverified multi-note "+
+			"decode, unconfirmed project-header fields beyond name/bpm/swing — see "+
+			"docs/sysex-tempest-format.md §9.5/§9.10/§9.4/§9.7). This is a project-level overview, not "+
+			"a full per-beat dump — use tempest_decode_project_beats for individual beat/note detail. "+
+			"Provide path to analyze a previously saved \"Export saved file over MIDI\" .syx file, or "+
+			"omit it to wait for a live dump (see tempest_decode_project_beats's description for the "+
+			"same live-export caveat about the 17-message RAM export path)."),
+		mcp.WithString("path", mcp.Description("Path to a previously saved Project (0x61) .syx file. Omit to wait for a live dump instead.")),
+		mcp.WithNumber("timeout_sec", mcp.Description("Seconds to wait for a live dump if path is omitted (default 30)")),
+	), s.handleAnalyzeProject)
 }
 
 func (s *Server) handleWaitForDump(_ context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
@@ -793,30 +860,40 @@ func (s *Server) handleExtractSoundsFromProject(_ context.Context, req mcp.CallT
 	}
 }
 
-func (s *Server) handleReadSoundParams(_ context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
-	var raw []byte
+// loadDumpOrWait returns the raw SysEx bytes read from the request's
+// "path" argument if set, otherwise waits for a live dump using the
+// request's "timeout_sec" argument (default 30s). triggerHint is included
+// in the timeout error to tell the caller what to press on the Tempest.
+func (s *Server) loadDumpOrWait(req mcp.CallToolRequest, triggerHint string) ([]byte, error) {
 	if rawPath := strArg(req, "path"); rawPath != "" {
 		path, err := sanitizePath(rawPath)
 		if err != nil {
-			return fail(fmt.Errorf("invalid path: %w", err))
+			return nil, fmt.Errorf("invalid path: %w", err)
 		}
-		raw, err = os.ReadFile(path)
+		raw, err := os.ReadFile(path)
 		if err != nil {
-			return fail(fmt.Errorf("reading %s: %w", path, err))
+			return nil, fmt.Errorf("reading %s: %w", path, err)
 		}
-	} else {
-		if err := s.requireDevice(); err != nil {
-			return fail(err)
-		}
-		timeout := intArg(req, "timeout_sec", 30)
-		ch, cancel := s.device.Subscribe()
-		defer cancel()
-		select {
-		case r := <-ch:
-			raw = r
-		case <-time.After(time.Duration(timeout) * time.Second):
-			return fail(fmt.Errorf("timeout after %ds — trigger Export Sound in RAM over MIDI from Save/Load on the Tempest", timeout))
-		}
+		return raw, nil
+	}
+	if err := s.requireDevice(); err != nil {
+		return nil, err
+	}
+	timeout := intArg(req, "timeout_sec", 30)
+	ch, cancel := s.device.Subscribe()
+	defer cancel()
+	select {
+	case raw := <-ch:
+		return raw, nil
+	case <-time.After(time.Duration(timeout) * time.Second):
+		return nil, fmt.Errorf("timeout after %ds — %s", timeout, triggerHint)
+	}
+}
+
+func (s *Server) handleReadSoundParams(_ context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+	raw, err := s.loadDumpOrWait(req, "trigger Export Sound in RAM over MIDI from Save/Load on the Tempest")
+	if err != nil {
+		return fail(err)
 	}
 
 	if sysex.Identify(raw) != sysex.TypeRAMSound {
@@ -841,6 +918,188 @@ func (s *Server) handleReadSoundParams(_ context.Context, req mcp.CallToolReques
 		}
 	}
 	return ok(strings.TrimSpace(b.String())), nil
+}
+
+func (s *Server) handleDecodeProjectBeats(_ context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+	raw, err := s.loadDumpOrWait(req, "trigger \"Export Project in RAM over MIDI\" or \"Export saved file over MIDI\" from Save/Load on the Tempest")
+	if err != nil {
+		return fail(err)
+	}
+
+	if sysex.Identify(raw) != sysex.TypeProjectDump {
+		return fail(fmt.Errorf("dump is not a Project (0x61) dump"))
+	}
+	unescaped := sysex.Unescape(raw)
+	projectName, _ := sysex.ExtractName(unescaped, sysex.TypeProjectDump)
+	beats, decodeErr := sysex.ProjectBeats(unescaped)
+
+	var b strings.Builder
+	fmt.Fprintf(&b, "Project %q — %d of %d beats decoded:\n", projectName, len(beats), sysex.BeatsPerProject)
+	multiNoteSeen := false
+	for _, beat := range beats {
+		fmt.Fprintf(&b, "\nBeat %2d: %q (short: %q)  bpm=%.1f  swing=%.1f%%  notes=%d\n",
+			beat.Index+1, beat.Name, beat.ShortName, beat.BPM, beat.Swing, len(beat.Notes))
+		for _, n := range beat.Notes {
+			fmt.Fprintf(&b, "    track=%d step=%d velocity=%d\n", n.Track, n.Step, n.Velocity)
+		}
+		if len(beat.Notes) > 1 {
+			multiNoteSeen = true
+		}
+	}
+	if multiNoteSeen {
+		fmt.Fprint(&b, "\nNote: one or more beats above show more than one note record. That's an "+
+			"unverified extrapolation of the single-note-confirmed record format (see "+
+			"docs/sysex-tempest-format.md §9.4/§9.7), not an independently confirmed decode.\n")
+	}
+	if decodeErr != nil {
+		fmt.Fprintf(&b, "\nDecoding stopped early: %v\n", decodeErr)
+	}
+	return ok(b.String()), nil
+}
+
+func (s *Server) handleAnalyzeProject(_ context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+	raw, err := s.loadDumpOrWait(req, "trigger \"Export Project in RAM over MIDI\" or \"Export saved file over MIDI\" from Save/Load on the Tempest")
+	if err != nil {
+		return fail(err)
+	}
+
+	if sysex.Identify(raw) != sysex.TypeProjectDump {
+		return fail(fmt.Errorf("dump is not a Project (0x61) dump — for a Beat/Kit export use tempest_export_wizard or tempest_wait_for_dump instead"))
+	}
+	unescaped := sysex.Unescape(raw)
+	projectName, _ := sysex.ExtractName(unescaped, sysex.TypeProjectDump)
+	beats, decodeErr := sysex.ProjectBeats(unescaped)
+
+	totalNotes := 0
+	multiNoteBeats := 0
+	initializeBeats := 0
+	var customized []int
+	for _, beat := range beats {
+		totalNotes += len(beat.Notes)
+		if len(beat.Notes) > 1 {
+			multiNoteBeats++
+		}
+		if strings.TrimSpace(beat.Name) == "Initialize" && len(beat.Notes) == 0 {
+			initializeBeats++
+		} else {
+			customized = append(customized, beat.Index+1)
+		}
+	}
+
+	var b strings.Builder
+	fmt.Fprintf(&b, "Project %q — %d bytes, %d of %d beats decoded\n",
+		projectName, len(raw), len(beats), sysex.BeatsPerProject)
+	fmt.Fprintf(&b, "  Total note records across all beats: %d\n", totalNotes)
+	fmt.Fprintf(&b, "  Beats still at default \"Initialize\" (no notes, unrenamed): %d\n", initializeBeats)
+	if len(customized) > 0 {
+		fmt.Fprintf(&b, "  Beats with content (renamed and/or notes present): %v\n", customized)
+	}
+	if multiNoteBeats > 0 {
+		fmt.Fprintf(&b, "  Beats with more than one note record: %d\n", multiNoteBeats)
+	}
+	if decodeErr != nil {
+		fmt.Fprintf(&b, "  Decoding stopped early: %v\n", decodeErr)
+	}
+
+	fmt.Fprint(&b, "\nCaveats:\n"+
+		"  - Per docs/sysex-tempest-format.md §9.5/§9.10, a Project export may reflect stale/saved "+
+		"state rather than the Tempest's live edit buffer — don't assume it matches what's currently "+
+		"on screen without checking.\n"+
+		"  - Per §9.10, the project-header field map beyond name/bpm/swing is mostly unconfirmed.\n")
+	if multiNoteBeats > 0 {
+		fmt.Fprint(&b, "  - Beats reported with more than one note record reflect an unverified "+
+			"extrapolation of the single-note-confirmed record format (§9.4/§9.7), not an "+
+			"independently confirmed decode.\n")
+	}
+	fmt.Fprint(&b, "\nFor full per-beat detail (name, bpm, swing, individual note records), use "+
+		"tempest_decode_project_beats.\n")
+
+	return ok(b.String()), nil
+}
+
+// exportWizardWantType maps a validated tempest_export_wizard "intent"
+// argument to the SysEx message type and human label it should see.
+func exportWizardWantType(intent string) (t sysex.MessageType, label string) {
+	if intent == "project" {
+		return sysex.TypeProjectDump, "Project"
+	}
+	return sysex.TypeBeatDump, "Beat"
+}
+
+// exportWizardMismatchLabel describes an unexpectedly-received message type
+// for tempest_export_wizard's intent-mismatch error, calling out the two
+// menu mixups this tool exists to catch (see its registration doc).
+func exportWizardMismatchLabel(got sysex.MessageType) string {
+	switch got {
+	case sysex.TypeBeatDump:
+		return "a Beat/Kit dump (0x5F) — did you export Beat when you meant to export Project, or select the wrong menu item?"
+	case sysex.TypeProjectDump:
+		return "a Project dump (0x61) — did you export Project when you meant to export Beat?"
+	case sysex.TypeRAMSound, sysex.TypeFLASHSound, sysex.TypeAlternateSound, sysex.TypeAlternateBank:
+		return "a Sound dump, not a Beat or Project — check you're in Save/Load, not Sound Edit"
+	}
+	return "an unrecognised message"
+}
+
+// beatNoteCountLine reports the note count implied by a Beat/Kit dump's raw
+// size (base 5925 bytes + 8 bytes/note, see docs/sysex-tempest-format.md
+// §7.3), or explains why the size doesn't fit that pattern.
+func beatNoteCountLine(rawLen int) string {
+	const baseSize = 5925
+	const bytesPerNote = 8
+	extra := rawLen - baseSize
+	if extra >= 0 && extra%bytesPerNote == 0 {
+		return fmt.Sprintf("\n  Notes implied by size: %d", extra/bytesPerNote)
+	}
+	return fmt.Sprintf("\n  Notes implied by size: unclear (%d bytes doesn't match the base+8N pattern)", rawLen)
+}
+
+func (s *Server) handleExportWizard(_ context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+	if err := s.requireDevice(); err != nil {
+		return fail(err)
+	}
+	intent := strings.ToLower(strArg(req, "intent"))
+	if intent != "beat" && intent != "project" {
+		return fail(fmt.Errorf("intent must be \"beat\" or \"project\", got %q", intent))
+	}
+	timeout := intArg(req, "timeout_sec", 30)
+	ch, cancel := s.device.Subscribe()
+	defer cancel()
+
+	var raw []byte
+	select {
+	case raw = <-ch:
+	case <-time.After(time.Duration(timeout) * time.Second):
+		return fail(fmt.Errorf("timeout after %ds — trigger the export from Save/Load on the Tempest", timeout))
+	}
+
+	t := sysex.Identify(raw)
+	wantType, wantLabel := exportWizardWantType(intent)
+
+	if t != wantType {
+		return fail(fmt.Errorf("expected %s export but received %s (%d bytes)",
+			wantLabel, exportWizardMismatchLabel(t), len(raw)))
+	}
+
+	unescaped := sysex.Unescape(raw)
+	name, _ := sysex.ExtractName(unescaped, t)
+
+	if t == sysex.TypeBeatDump {
+		return ok(fmt.Sprintf(
+			"Received Beat/Kit dump (0x5F):\n  Name: %q\n  Size: %d bytes%s\n\n"+
+				"This is an observed fact from byte count alone, per docs/sysex-tempest-format.md §7.3 — "+
+				"it is NOT a claim that this export captured your notes reliably or in the right positions. "+
+				"See §9.7-9.8 for the open questions around multi-note export correctness.",
+			name, len(raw), beatNoteCountLine(len(raw)))), nil
+	}
+
+	return ok(fmt.Sprintf(
+		"Received Project header dump (0x61):\n  Name: %q\n  Size: %d bytes\n\n"+
+			"Note: only this first message was validated. A live Project RAM export over MIDI sends 17 "+
+			"messages total (this 0x5E/0x61 header plus 16 per-beat 0x5C messages); this tool does not "+
+			"collect or decode the remaining ones. Full project decode is unsolved — see "+
+			"docs/sysex-tempest-format.md §9.8.",
+		name, len(raw))), nil
 }
 
 // ── Utility Tools ─────────────────────────────────────────────────────────────

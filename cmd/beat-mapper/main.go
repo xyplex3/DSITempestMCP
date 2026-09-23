@@ -1,5 +1,5 @@
-// Command beat-mapper is a standalone CLI for reverse-engineering the DSI Tempest
-// project dump byte layout via capture-diff-annotate sessions.
+// Command beat-mapper is a standalone CLI for reverse-engineering the DSI
+// Tempest project dump byte layout via capture-diff-annotate sessions.
 package main
 
 import (

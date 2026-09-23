@@ -11,6 +11,8 @@ import (
 	"testing"
 
 	"github.com/mark3labs/mcp-go/mcp"
+
+	"tempest-mcp/internal/sysex"
 )
 
 // makeReq builds a CallToolRequest whose arguments are populated from args.
@@ -336,6 +338,100 @@ func TestFloatArg(t *testing.T) {
 			got := floatArg(makeReq(tt.args), tt.key, def)
 			if got != tt.want {
 				t.Errorf("floatArg(key=%q) = %g, want %g", tt.key, got, tt.want)
+			}
+		})
+	}
+}
+
+// TestExportWizardWantType verifies the intent-to-message-type mapping used
+// by tempest_export_wizard.
+func TestExportWizardWantType(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		intent    string
+		wantType  sysex.MessageType
+		wantLabel string
+	}{
+		{intent: "beat", wantType: sysex.TypeBeatDump, wantLabel: "Beat"},
+		{intent: "project", wantType: sysex.TypeProjectDump, wantLabel: "Project"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.intent, func(t *testing.T) {
+			t.Parallel()
+			gotType, gotLabel := exportWizardWantType(tt.intent)
+			if gotType != tt.wantType || gotLabel != tt.wantLabel {
+				t.Errorf("exportWizardWantType(%q) = (%v, %q), want (%v, %q)",
+					tt.intent, gotType, gotLabel, tt.wantType, tt.wantLabel)
+			}
+		})
+	}
+}
+
+// TestExportWizardMismatchLabel verifies tempest_export_wizard describes
+// each wrong-type dump with the specific menu-mixup guidance it exists to
+// give, not a generic error.
+func TestExportWizardMismatchLabel(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name string
+		got  sysex.MessageType
+		want string
+	}{
+		{name: "beat dump", got: sysex.TypeBeatDump, want: "Beat/Kit dump"},
+		{name: "project dump", got: sysex.TypeProjectDump, want: "Project dump"},
+		{name: "RAM sound", got: sysex.TypeRAMSound, want: "Sound dump"},
+		{name: "FLASH sound", got: sysex.TypeFLASHSound, want: "Sound dump"},
+		{name: "alternate sound", got: sysex.TypeAlternateSound, want: "Sound dump"},
+		{name: "alternate bank", got: sysex.TypeAlternateBank, want: "Sound dump"},
+		{name: "unknown", got: sysex.TypeUnknown, want: "unrecognised message"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			got := exportWizardMismatchLabel(tt.got)
+			if !strings.Contains(got, tt.want) {
+				t.Errorf("exportWizardMismatchLabel(%v) = %q, want it to contain %q", tt.got, got, tt.want)
+			}
+		})
+	}
+}
+
+// TestBeatNoteCountLine verifies the byte-count-derived note count computed
+// from the base+8N Beat/Kit dump size formula (docs/sysex-tempest-format.md
+// §7.3), and that non-conforming sizes are reported as unclear rather than
+// silently miscounted.
+func TestBeatNoteCountLine(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name    string
+		rawLen  int
+		want    string
+		unclear bool
+	}{
+		{name: "baseline, zero notes", rawLen: 5925, want: "Notes implied by size: 0"},
+		{name: "one note", rawLen: 5925 + 8, want: "Notes implied by size: 1"},
+		{name: "two notes", rawLen: 5925 + 16, want: "Notes implied by size: 2"},
+		{name: "smaller than base", rawLen: 100, unclear: true},
+		{name: "doesn't land on an 8-byte boundary", rawLen: 5925 + 3, unclear: true},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			got := beatNoteCountLine(tt.rawLen)
+			if tt.unclear {
+				if !strings.Contains(got, "unclear") {
+					t.Errorf("beatNoteCountLine(%d) = %q, want it to contain %q", tt.rawLen, got, "unclear")
+				}
+				return
+			}
+			if !strings.Contains(got, tt.want) {
+				t.Errorf("beatNoteCountLine(%d) = %q, want it to contain %q", tt.rawLen, got, tt.want)
 			}
 		})
 	}

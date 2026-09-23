@@ -1,3 +1,12 @@
+// Command capture-tmp connects to the Tempest, waits for a live SysEx
+// export, saves it, and verifies the result against an expected note count.
+// It is a research tool for controlled Beat/Kit export testing, decoding
+// the step-position/track/velocity bytes when exactly one note is present
+// and optionally diffing the pad table against a baseline capture.
+//
+// Usage:
+//
+//	capture-tmp <out.syx> <expected_note_count> [timeout_sec] [baseline.syx]
 package main
 
 import (

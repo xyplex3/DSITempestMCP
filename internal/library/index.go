@@ -1,5 +1,6 @@
-// Package library manages the local Tempest sound library at /Users/xyplex2/Tempest.
-// It scans .syx files, extracts sound names and metadata, and maintains a JSON index.
+// Package library manages the local Tempest sound library, by default at
+// ~/Tempest (configurable via the library.path setting). It scans .syx
+// files, extracts sound names and metadata, and maintains a JSON index.
 package library
 
 import (

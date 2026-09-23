@@ -1,5 +1,5 @@
-// Package mapper implements the capture-diff-annotate workflow for reverse-engineering
-// the DSI Tempest project dump byte layout.
+// Package mapper implements the capture-diff-annotate workflow for
+// reverse-engineering the DSI Tempest project dump byte layout.
 package mapper
 
 import (
@@ -49,7 +49,8 @@ func UnescapeProject(path string) (*Result, error) {
 	return nil, fmt.Errorf("no recognised Tempest SysEx message in %s", path)
 }
 
-// ParseSyx reads a .syx file and splits it into individual SysEx messages (F0…F7).
+// ParseSyx reads a .syx file and splits it into individual SysEx messages
+// (F0…F7).
 func ParseSyx(path string) ([][]byte, error) {
 	data, err := os.ReadFile(path)
 	if err != nil {

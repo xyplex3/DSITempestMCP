@@ -138,3 +138,44 @@ func TestSendRawValidation(t *testing.T) {
 		})
 	}
 }
+
+// TestSetTempo_UnconnectedWithValidBPM documents SetTempo's current
+// behavior on a disconnected device: it records clockStop/clockBPM before
+// checking the connection, so a failed SetTempo call still leaves
+// CurrentBPM reporting the requested tempo even though no clock goroutine
+// was ever started. This pins down existing behavior for regression
+// purposes; it is not necessarily the ideal behavior.
+func TestSetTempo_UnconnectedWithValidBPM(t *testing.T) {
+	d := midi.New(midi.DeviceConfig{Channel: 10})
+
+	err := d.SetTempo(140)
+	if err == nil {
+		t.Fatal("SetTempo() on disconnected device expected error, got nil")
+	}
+	if !strings.Contains(err.Error(), "not connected") {
+		t.Errorf("error = %q, want to contain %q", err.Error(), "not connected")
+	}
+	if got := d.CurrentBPM(); got != 140 {
+		t.Errorf("CurrentBPM() after failed SetTempo = %g, want 140 "+
+			"(documents that clock state is recorded before the connection check)", got)
+	}
+}
+
+// TestStop_WithoutTempoRunning verifies that Stop is safe to call when no
+// clock was ever started, and safe to call more than once in a row.
+func TestStop_WithoutTempoRunning(t *testing.T) {
+	d := midi.New(midi.DeviceConfig{Channel: 10})
+
+	err := d.Stop()
+	if err == nil {
+		t.Fatal("Stop() on disconnected device expected error, got nil")
+	}
+	if !strings.Contains(err.Error(), "not connected") {
+		t.Errorf("error = %q, want to contain %q", err.Error(), "not connected")
+	}
+
+	// A second call must not panic (stopClockLocked guards a nil channel).
+	if err := d.Stop(); err == nil {
+		t.Fatal("second Stop() call expected error, got nil")
+	}
+}
