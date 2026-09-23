@@ -23,6 +23,12 @@ const (
 	// (via the Kit layout below) to exact, byte-perfect names and BPM values
 	// matching their known contents. See docs/sysex-tempest-format.md §5.
 	TypeBeat = 0x5F
+	// TypeBeatFile is a single Beat, in TempestEdit's own "file" wrapper
+	// format (its BEAT_FILE_EXPORT_TYPE) - confirmed from TempestEdit's own
+	// source (docs/sysex-tempest-format.md §9.11): same 5-byte header and
+	// path-length-prefix scheme as FLASH/Project. Not independently
+	// confirmed against a real hardware capture in this repo.
+	TypeBeatFile = 0x62
 
 	// Sound parameter block sizes (unescaped).
 	ParamBlockSizeFLASH = 132 // approximate; 0x63 format
@@ -97,6 +103,9 @@ const (
 	// TypeBeatDump is a single Beat/Kit export. See the TypeBeat constant
 	// above for confirmation details.
 	TypeBeatDump MessageType = TypeBeat
+	// TypeBeatFileDump is a single Beat in TempestEdit's "file" wrapper
+	// format. See the TypeBeatFile constant above for confirmation details.
+	TypeBeatFileDump MessageType = TypeBeatFile
 )
 
 // SplitMessages splits a raw byte slice into individual SysEx messages,
@@ -141,22 +150,26 @@ func Identify(raw []byte) MessageType {
 		return TypeAlternateBank
 	case TypeBeat:
 		return TypeBeatDump
+	case TypeBeatFile:
+		return TypeBeatFileDump
 	}
 	return TypeUnknown
 }
 
 // headerLen returns the number of leading bytes — F0, manufacturer, device,
 // type, and (for some types) one extra byte — before the escaped payload
-// begins. FLASH (0x63), alternate-bank sound (0x5C), and project dump (0x61)
-// carry that extra byte. For FLASH and 0x61 it is a name/path-length prefix
-// (see BuildFLASHDump): confirmed for 0x61 against a real hardware capture
-// where byte[4] = 0x1c = 28 = the 27-char project path + its null terminator
-// (docs/sysex-tempest-format.md §10). For 0x5C it is a bank slot (see
-// Location). Every other recognised type has a plain 4-byte header. Source:
+// begins. FLASH (0x63), alternate-bank sound (0x5C), project dump (0x61),
+// and the beat-file export (0x62) carry that extra byte. For FLASH, 0x61,
+// and 0x62 it is a name/path-length prefix (see BuildFLASHDump): confirmed
+// for 0x61 against a real hardware capture where byte[4] = 0x1c = 28 = the
+// 27-char project path + its null terminator (docs/sysex-tempest-format.md
+// §10), and for 0x62 from TempestEdit's own source (§9.11), not yet an
+// independent hardware capture. For 0x5C it is a bank slot (see Location).
+// Every other recognised type has a plain 4-byte header. Source:
 // TempestEdit's headerLen() (docs/sysex-tempest-format.md §2).
 func headerLen(t MessageType) int {
 	switch t {
-	case TypeFLASHSound, TypeAlternateSound, TypeProjectDump:
+	case TypeFLASHSound, TypeAlternateSound, TypeProjectDump, TypeBeatFileDump:
 		return 5
 	default:
 		return 4

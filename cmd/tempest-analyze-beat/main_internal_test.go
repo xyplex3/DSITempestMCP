@@ -21,6 +21,7 @@ func TestMessageTypeToString(t *testing.T) {
 		{name: "unknown", t: sysex.TypeUnknown, want: "Unknown"},
 		{name: "RAM sound", t: sysex.TypeRAMSound, want: "RAM Sound (0x60)"},
 		{name: "project dump", t: sysex.TypeProjectDump, want: "Project Dump (0x61)"},
+		{name: "beat file export", t: sysex.TypeBeatFileDump, want: "Beat File Export (0x62)"},
 		{name: "FLASH sound", t: sysex.TypeFLASHSound, want: "FLASH Sound (0x63)"},
 		{name: "alternate sound", t: sysex.TypeAlternateSound, want: "Alternate Sound (0x5C) - Individual Beat"},
 		{name: "alternate bank", t: sysex.TypeAlternateBank, want: "Alternate Bank (0x5E) - Project Header"},

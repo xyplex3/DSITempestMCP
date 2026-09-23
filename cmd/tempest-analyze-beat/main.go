@@ -275,6 +275,8 @@ func messageTypeToString(t sysex.MessageType) string {
 		return "RAM Sound (0x60)"
 	case sysex.TypeProjectDump:
 		return "Project Dump (0x61)"
+	case sysex.TypeBeatFileDump:
+		return "Beat File Export (0x62)"
 	case sysex.TypeFLASHSound:
 		return "FLASH Sound (0x63)"
 	case sysex.TypeAlternateSound:

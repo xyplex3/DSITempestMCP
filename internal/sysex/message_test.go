@@ -88,6 +88,11 @@ func TestIdentify(t *testing.T) {
 			want: sysex.TypeBeatDump,
 		},
 		{
+			name: "beat file export (0x62)",
+			raw:  []byte{0xF0, 0x01, 0x28, 0x62, 0x00},
+			want: sysex.TypeBeatFileDump,
+		},
+		{
 			name: "unknown type byte",
 			raw:  []byte{0xF0, 0x01, 0x28, 0x01, 0x00},
 			want: sysex.TypeUnknown,
@@ -199,6 +204,13 @@ func TestPayload(t *testing.T) {
 			name: "FLASH three payload bytes",
 			raw:  []byte{0xF0, 0x01, 0x28, 0x63, 0x00, 0x01, 0x02, 0x03, 0xF7},
 			want: []byte{0x01, 0x02, 0x03},
+		},
+		{
+			// Beat file export (0x62): also a 5-byte header, confirmed from
+			// TempestEdit's own source (docs/sysex-tempest-format.md §9.11).
+			name: "beat file export minimal message",
+			raw:  []byte{0xF0, 0x01, 0x28, 0x62, 0x00, 0xAA, 0xF7},
+			want: []byte{0xAA},
 		},
 	}
 

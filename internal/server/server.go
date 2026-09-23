@@ -673,13 +673,16 @@ func (s *Server) registerSysExTools() {
 	), s.handleExtractSoundsFromProject)
 
 	s.mcp.AddTool(mcp.NewTool("tempest_read_sound_params",
-		mcp.WithDescription("Decode a Sound (0x60 RAM/edit-buffer) dump into named synthesis parameters — "+
-			"oscillators, filter, envelopes, LFOs, mod matrix. Provide path to decode a previously saved "+
-			".syx file, or omit it to wait for a live dump: on the Tempest press Save/Load → Export Sound "+
-			"in RAM over MIDI → Next → USB → Export Now. "+
-			"Bit locations are translated from a community-sourced bit map and spot-checked against 3 "+
-			"hardware captures (see docs/sysex-tempest-format.md §7/§8) — most individual parameters have "+
-			"not been independently re-verified."),
+		mcp.WithDescription("Decode a Sound (0x60 RAM/edit-buffer) dump into its on-device name and named "+
+			"synthesis parameters — oscillators, filter, envelopes, LFOs, mod matrix. Provide path to "+
+			"decode a previously saved .syx file, or omit it to wait for a live dump: on the Tempest "+
+			"press Save/Load → Export Sound in RAM over MIDI → Next → USB → Export Now. "+
+			"The name is bit-packed and confirmed against 46 real hardware captures (see "+
+			"docs/sysex-tempest-format.md §9.9) — it reflects whatever the sound was last saved/renamed "+
+			"as, not necessarily anything related to the current edits. "+
+			"Parameter bit locations are translated from a community-sourced bit map and spot-checked "+
+			"against 3 hardware captures (see §7/§8) — most individual parameters have not been "+
+			"independently re-verified."),
 		mcp.WithString("path", mcp.Description("Path to a previously saved RAM (0x60) .syx file. Omit to wait for a live dump instead.")),
 		mcp.WithNumber("timeout_sec", mcp.Description("Seconds to wait for a live dump if path is omitted (default 30)")),
 	), s.handleReadSoundParams)
@@ -908,10 +911,12 @@ func (s *Server) handleReadSoundParams(_ context.Context, req mcp.CallToolReques
 		return fail(fmt.Errorf("dump is not a Sound (0x60) RAM/edit-buffer dump"))
 	}
 	unescaped := sysex.Unescape(raw)
+	name, _ := sysex.ExtractName(unescaped, sysex.TypeRAMSound)
 	params := sysex.ExtractParams(unescaped, sysex.TypeRAMSound)
 	decoded := sysex.DecodeSoundParams(params)
 
 	var b strings.Builder
+	fmt.Fprintf(&b, "Name: %q\n", name)
 	section := ""
 	for _, p := range sysex.SoundParams {
 		if p.Section != section {
@@ -1174,6 +1179,7 @@ func (s *Server) describeDump(raw []byte) (*mcp.CallToolResult, error) {
 	typeName := map[sysex.MessageType]string{
 		sysex.TypeRAMSound:       "RAM sound (0x60)",
 		sysex.TypeProjectDump:    "Project dump (0x61)",
+		sysex.TypeBeatFileDump:   "Beat file export (0x62)",
 		sysex.TypeFLASHSound:     "FLASH sound (0x63)",
 		sysex.TypeAlternateSound: "Alternate sound (0x5C)",
 		sysex.TypeAlternateBank:  "Alternate bank (0x5E)",

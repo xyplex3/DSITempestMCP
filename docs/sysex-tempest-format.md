@@ -1487,11 +1487,10 @@ Done as of this session (see §7 and `internal/sysex/`):
 1. ~~Confirm the collector-first unpack scheme (§3) against a real
    capture~~ - done; implemented in `internal/sysex/encoding.go`.
 2. ~~Add `0x5F` to `internal/sysex/message.go`'s type table~~ - done
-   (`TypeBeat`/`TypeBeatDump`); `0x62` = Beat file export type, now
-   confirmed from TempestEdit's source (§9.11) and documented in §1's type
-   table, but still unadded to `internal/sysex/message.go`'s runtime type
-   table (the code treats 0x62 input via the docs' note that 0x5F/0x62 are
-   interchangeable - adding `TypeBeatFile` is a small follow-up, not done).
+   (`TypeBeat`/`TypeBeatDump`); `0x62` = Beat file export type, confirmed
+   from TempestEdit's source (§9.11) and now added as `TypeBeatFile` /
+   `TypeBeatFileDump` to `internal/sysex/message.go`'s runtime type table,
+   including the shared 5-byte-header path-length-prefix handling.
 3. ~~Re-derive `Location()`/`BankSlot()` for FLASH (`0x63`)~~ - done;
    `BuildFLASHDump` no longer embeds a location byte, and `tempest_load_sound`
    only tracks bank/slot locally (see README).

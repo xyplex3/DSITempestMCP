@@ -748,6 +748,7 @@ The Tempest uses one encoding scheme across every recognised message type:
 |---|---|
 | RAM sound (edit buffer) | 0x60 |
 | Project dump | 0x61 |
+| Beat file export | 0x62 |
 | FLASH sound | 0x63 |
 | Bank sound (bulk dump) | 0x5C |
 | Bank header | 0x5E |
@@ -755,10 +756,10 @@ The Tempest uses one encoding scheme across every recognised message type:
 
 Groups of 8 wire bytes are 1 leading **collector** byte followed by 7 data
 bytes; bit *k* of the collector is the high bit of data byte *k*. FLASH
-(0x63), bank-sound (0x5C), and file-type Project (0x61, "Export saved file
-over MIDI") messages carry one extra header byte before the payload - for
-FLASH and Project this is a name/path-length prefix, not a bank/slot (see
-below).
+(0x63), bank-sound (0x5C), file-type Project (0x61, "Export saved file over
+MIDI"), and beat file export (0x62) messages carry one extra header byte
+before the payload - for FLASH, Project, and beat file export this is a
+name/path-length prefix, not a bank/slot (see below).
 
 Sound names are null-terminated ASCII at the start of the unescaped payload
 for FLASH/Project; Beat/Kit names are a fixed-offset, space-padded 20-char
