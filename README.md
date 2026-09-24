@@ -812,6 +812,29 @@ that are directly relevant to the still-open Export Beat question above.
 
 ---
 
+## About the author
+
+DSI Tempest MCP is written by xyplex3, a developer and musician based in
+Seattle, WA.
+
+The musical project is Xyplex2 - industrial, experimental, and
+distorted-beats music released on the Detroit Industrial label. The debut
+album Second Shift came out in May 2022 and is available on Bandcamp as a
+digital download or limited-edition USB + cassette.
+
+Xyplex2 is based in the Seattle area and is available for underground
+techno and industrial shows. If you like this project please book Xyplex2
+for shows!
+
+- Xyplex2 - Second Shift on Bandcamp
+- Supervisory Control (YouTube)
+- Second Shift (YouTube)
+- Extreme Directions (YouTube)
+- Direct Object Reference (YouTube)
+- Xyplex2 on Instagram
+
+---
+
 ## License
 
 MIT
