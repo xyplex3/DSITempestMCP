@@ -3,7 +3,7 @@
 Control your DSI/Sequential Tempest analog drum machine with Claude through
 the Model Context Protocol. Once installed, Claude can trigger pads, run the
 sequencer, search and load your sound library, design new sounds, and send or
-receive SysEx dumps - all from a conversation.
+receive SysEx dumps.
 
 ## Features
 
