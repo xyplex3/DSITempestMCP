@@ -369,16 +369,19 @@ with a confirmed step position, a confirmed track-identity byte (`0x80 |
 0-based track index`), and a known-but-noisy velocity byte (§9.1-9.3).
 
 **Beat pattern writing** (`tempest_write_beat`, `tempest_clear_beat`) is not
-built yet, but the two things that blocked it are resolved: the multi-note
-question (§9.13 - two independent controlled captures, including a
-reversed track/step assignment, both exported and decoded correctly
-against real hardware), and `EncodeBeat`/`DecodeBeat` themselves (§9.14 -
-implemented, round-trip tested byte-for-byte against real 0/1/2-note
-captures, and confirmed to support editing a beat's existing notes and
-header fields). What's left before a write tool: validating on real
-hardware (not just the in-repo round-trip test), and - only if
-synthesizing a genuinely new note count is wanted, not just editing
-existing notes - decoding one more unconfirmed byte per record (§9.14).
+built yet, but the things that blocked it are resolved: the multi-note
+question (§9.13/§9.15 - controlled captures up to three simultaneous
+notes, including a reversed track/step assignment, exported and decoded
+correctly against real hardware), and `EncodeBeat`/`DecodeBeat` themselves
+(§9.14/§9.15 - implemented, round-trip tested byte-for-byte against real
+0/1/2/3-note captures, and confirmed to support both editing a beat's
+existing notes and synthesizing a genuinely new note count). What's left
+before a write tool is entirely about the *Tempest's own* reliability, not
+this package's encoding: real-hardware validation of an actual write
+(send, then read back and compare - not just the in-repo round-trip test),
+and §9.15's finding that three-note *export* isn't perfectly reliable on
+real hardware (one of two identical attempts corrupted a note's step
+field) - whether that affects writing the same way is untested.
 
 **Named sound parameter reading** (`tempest_read_sound_params`) is now
 available: the parameter offset table (`internal/sysex/soundparams.go`) was
@@ -636,13 +639,20 @@ three-or-more remains untested. Validated against real hardware-captured
 
 #### Step 5 - Add `tempest_write_beat` and `tempest_clear_beat`
 
-Step 3 is done for editing a beat's existing notes (change step, track,
-velocity, name, BPM, swing) - that path could be wired into a write tool
-today. Synthesizing a beat with a *different* note count than its base
-capture still needs offset 0's real meaning decoded first (§9.14).
-Writing also carries its own risk regardless: no receipt confirmation from
-the Tempest, real overwrite risk - validate thoroughly against real
-hardware before wiring this up, not just the in-repo round-trip test.
+`EncodeBeat` now supports both editing an existing beat's notes and
+synthesizing a genuinely new note count (up to 3, §9.15) - the encoding
+side is ready to wire into a write tool. Two things to resolve first,
+both about the *Tempest's own reliability*, not this package's encoding:
+
+1. **Export reliability at 3 notes is not perfect** (§9.15) - one of two
+   identical controlled capture attempts corrupted a note's step field.
+   Whether this affects *writing* a beat *to* the Tempest the same way
+   Export reliability affects *reading* one *from* it is untested.
+2. No receipt confirmation from the Tempest - a write tool can't verify
+   its own success and must read back the result to check.
+
+Validate thoroughly against real hardware (send, then read back and
+compare) before wiring this up, not just the in-repo round-trip test.
 
 > **Warning:** Sending a modified Beat/Kit dump risks overwriting the current
 > beat on the Tempest. Always save a backup dump before calling

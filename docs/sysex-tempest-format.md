@@ -1609,17 +1609,71 @@ re-checked directly against the raw bytes and still read identically
 across every capture so far, single- or two-note alike - only offset 0
 turned out to vary.
 
-**Practical consequence:** `EncodeBeat` cannot fabricate a new note
-record's non-confirmed bytes from nothing. It requires the base payload it
-patches to already contain a record at every position the caller asks
-for, copying those unconfirmed bytes forward unchanged rather than
-guessing - and returns an error rather than guessing wrong if asked for a
-position the base doesn't have (`TestEncodeBeat_CannotSynthesizeNewRecord`).
-Decoding, and re-encoding any *existing* record's confirmed fields (step,
-track, velocity) with edits, both work today - see
-`TestEncodeBeat_RoundTrip` and `TestEncodeBeat_EditsConfirmedFields`.
-Synthesizing a genuinely new note count beyond what a base capture already
-contains needs offset 0's real meaning decoded first.
+**Practical consequence at the time this was found:** `EncodeBeat` could
+not fabricate a new note record's non-confirmed bytes from nothing, and
+required the base payload it patches to already contain a record at every
+position requested. **Superseded by §9.15**, which decoded offset 0's
+actual formula and removed this limitation.
+
+### 9.15 Solved: note record offset 0's formula, and a new three-note reliability finding (2026-09-25)
+
+Chasing §9.14's limitation with a real controlled three-note capture
+(`A1 step 1, A2 step 2, A3 step 3`) solved relative offset 0 and
+surfaced a genuine, separate hardware reliability issue.
+
+**Offset 0's formula, confirmed:**
+
+| Notes | Position 0 | Position 1 | Position 2 |
+|---|---|---|---|
+| 1 | `0x06` (6) | - | - |
+| 2 (both orderings) | `0x0B` (11) | `0x00` | - |
+| 3 | `0x10` (16) | `0x00` | `0x00` |
+
+Position 0's value is exactly `1 + 5 × noteCount` - a clean fit across
+1/2/3-note captures, with the 2-note case independently confirmed twice
+(§9.13's two orderings). Every position after the first reads `0x00`
+regardless of note count or position, confirmed across five separate
+non-first-position observations. Offsets 1 and 6-9, already found
+constant in §9.2/§9.14, held at their same values (`00` and
+`02 00 00 00`) across all eleven note-record observations gathered so
+far. Not confirmed past 3 simultaneous notes - treat the formula as a
+strong extrapolation beyond that, not a certainty.
+
+`EncodeBeat` now synthesizes note records fully from a `Kit`'s `Notes`
+field using this formula, rather than requiring the base payload to
+already contain a record at that position. `TestEncodeBeat_SynthesizeNewRecord`
+proves this against real hardware: starting from the real two-note
+capture as a base and appending a third note reproduces the real
+three-note capture's note-record bytes exactly.
+
+**The reliability finding, from the same session:** the first attempt at
+this exact three-note test - same procedure, same tracks, same steps -
+produced a capture where the third note's **step** field read `step 2`
+instead of the `step 3` actually tapped. Everything else about that
+record was correct (marker, track byte, offset 0's formula value all
+matched what the working capture later showed); only the step field was
+wrong, and it exactly duplicated the *second* note's step value rather
+than reading garbage. A second, immediately-repeated attempt with the
+identical procedure produced a fully correct capture. Both files are kept
+as fixtures (`threenote_a1s1_a2s2_a3s3.syx` and the
+`_stepcorrupted` variant) - the corrupted one is a real, reproducible
+data point, not a discarded mistake, and both round-trip through
+`DecodeBeat`/`EncodeBeat` byte-for-byte regardless of whether their
+contents are semantically correct, since round-tripping only tests byte
+fidelity, not correctness of what the Tempest itself produced.
+
+**What this means:** three-simultaneous-note export is not perfectly
+reliable on real hardware, independent of whether this package's decode
+and encode logic are correct - they are, byte-for-byte, for both the
+correct and the corrupted capture alike. Anyone building
+`tempest_write_beat` on top of `EncodeBeat` should treat a single
+successful write as insufficient confidence and read back the result to
+verify, rather than trusting a fire-and-forget send. Whether this failure
+mode is specific to the *export* path (matching the hardware-import
+question raised in §9.11) or would also affect a beat sent *to* the
+Tempest is itself untested - `EncodeBeat`'s correctness and the Tempest's
+own export reliability are two separate questions, and only the first one
+is now well-confirmed.
 
 ---
 
@@ -1685,11 +1739,15 @@ Still open, in priority order:
    A1), verify it on screen, then Export Project immediately - if it still
    doesn't show up, Export Project likely isn't reading the live edit
    buffer the way Export Beat does.
-4. **Validate §9's note-record theory further** - the two-note case is now
-   confirmed (§9.13); still untested: whether the linear track index holds
-   at a higher index or across the A/B bank boundary, and whether three or
-   more simultaneous notes still concatenate as simple consecutive 10-byte
-   blocks the way §9's "sparse list" theory predicts.
+4. **Validate §9's note-record theory further** - two and three notes are
+   now confirmed (§9.13, §9.15); still untested: whether the linear track
+   index holds at a higher index or across the A/B bank boundary, whether
+   four or more simultaneous notes still concatenate as simple consecutive
+   10-byte blocks the way §9's "sparse list" theory predicts, and whether
+   §9.15's export-reliability issue (a note's step field intermittently
+   duplicating a neighbor's) is specific to three notes, gets worse at
+   higher counts, or is a rarer general issue that just happened to surface
+   there.
 5. **Decode the still-unknown constant bytes in the note record** (offsets
    1077, 1078, 1080, 1083-1086, §9.2) - untested against anything that might
    vary them, like gate length or which sound is assigned to the pad.

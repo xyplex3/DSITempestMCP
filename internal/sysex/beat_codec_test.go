@@ -34,6 +34,11 @@ func TestEncodeBeat_RoundTrip(t *testing.T) {
 		dir + "onenote_a1s1.syx",
 		dir + "twonote_a1s1_a2s2.syx",
 		dir + "twonote_a2s1_a1s2.syx",
+		dir + "threenote_a1s1_a2s2_a3s3.syx",
+		// Round-trip cares about byte fidelity, not semantic correctness —
+		// this fixture is a real capture where the Tempest itself corrupted
+		// one note's step field (§9.15); it must still round-trip exactly.
+		dir + "threenote_a1s1_a2s2_a3s3_stepcorrupted.syx",
 	}
 
 	for _, path := range fixtures {
@@ -112,20 +117,36 @@ func TestEncodeBeat_EditsConfirmedFields(t *testing.T) {
 	}
 }
 
-// TestEncodeBeat_CannotSynthesizeNewRecord verifies that asking for more
-// notes than the base payload already contains fails with a clear error,
-// rather than fabricating a record's non-confirmed bytes.
-func TestEncodeBeat_CannotSynthesizeNewRecord(t *testing.T) {
-	base := loadKitFixture(t, "testdata/beat-research/onenote_a1s1.syx") // 1 note
-	kit := &sysex.Kit{
-		Name: "Initialize",
-		Notes: []sysex.NoteRecord{
-			{Track: 0, Step: 1, Velocity: 50},
-			{Track: 1, Step: 2, Velocity: 50}, // no corresponding record in base
-		},
+// TestEncodeBeat_SynthesizeNewRecord verifies that EncodeBeat can add a
+// genuinely new note record beyond what the base payload contains — using
+// the confirmed formula for a record's non-confirmed bytes (§9.15) rather
+// than requiring the position to already exist in base. Uses the real
+// three-note capture's own decoded note values (including velocity, which
+// is noisy/tap-driven and not reproducible across independently-captured
+// sessions — using its exact real values isolates this test to the
+// structural bytes EncodeBeat actually controls) as the input, starting
+// from the unrelated real two-note fixture as base, and requires the
+// result's note-record bytes to match the real three-note capture
+// byte-for-byte.
+func TestEncodeBeat_SynthesizeNewRecord(t *testing.T) {
+	base := loadKitFixture(t, "testdata/beat-research/twonote_a1s1_a2s2.syx")
+	want := loadKitFixture(t, "testdata/beat-research/threenote_a1s1_a2s2_a3s3.syx")
+
+	wantKit, err := sysex.DecodeBeat(want)
+	if err != nil {
+		t.Fatalf("DecodeBeat() of the real three-note fixture error = %v", err)
 	}
-	if _, err := sysex.EncodeBeat(base, kit); err == nil {
-		t.Fatal("EncodeBeat() expected an error asking for a second note beyond base's one, got nil")
+
+	encoded, err := sysex.EncodeBeat(base, &sysex.Kit{Name: "Initialize", Notes: wantKit.Notes})
+	if err != nil {
+		t.Fatalf("EncodeBeat() error = %v", err)
+	}
+
+	noteBytesLen := sysex.KitNoteRecordLen * len(wantKit.Notes)
+	gotBytes := encoded[sysex.KitNoteRecordOffset : sysex.KitNoteRecordOffset+noteBytesLen]
+	wantBytes := want[sysex.KitNoteRecordOffset : sysex.KitNoteRecordOffset+noteBytesLen]
+	if !reflect.DeepEqual(gotBytes, wantBytes) {
+		t.Errorf("synthesized note-record bytes = % X, want % X", gotBytes, wantBytes)
 	}
 }
 
@@ -147,6 +168,11 @@ func TestDecodeBeat_HardwareCaptures(t *testing.T) {
 		{"testdata/beat-research/twonote_a2s1_a1s2.syx", []sysex.NoteRecord{
 			{Track: 1, Step: 1, Velocity: 36},
 			{Track: 0, Step: 2, Velocity: 49},
+		}},
+		{"testdata/beat-research/threenote_a1s1_a2s2_a3s3.syx", []sysex.NoteRecord{
+			{Track: 0, Step: 1, Velocity: 37},
+			{Track: 1, Step: 2, Velocity: 36},
+			{Track: 2, Step: 3, Velocity: 69},
 		}},
 	}
 

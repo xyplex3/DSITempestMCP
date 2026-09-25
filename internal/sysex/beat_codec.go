@@ -38,8 +38,11 @@ type Kit struct {
 	BPM       float64
 	Swing     float64
 	// Notes holds the decoded note records. See KitNoteRecords' doc
-	// comment: confirmed for up to two simultaneous notes; three or more
-	// remain untested.
+	// comment: confirmed for up to three simultaneous notes (§9.15); more
+	// remain untested. Note also that exporting three simultaneous notes
+	// from the Tempest itself is not perfectly reliable (§9.15) — one of
+	// two identical controlled attempts corrupted a note's step field —
+	// independent of whether this package's own encoding is correct.
 	Notes []NoteRecord
 }
 
@@ -59,20 +62,45 @@ func DecodeBeat(kit []byte) (*Kit, error) {
 	}, nil
 }
 
+// noteRecordFirstByte returns relative offset 0's value for the first
+// (index 0) record in a kit holding noteCount active notes. Confirmed
+// against real hardware across 1, 2 (two independent captures), and 3
+// notes (docs/sysex-tempest-format.md §9.15): 6, 11, and 16
+// respectively — an exact fit for 1 + 5*noteCount. Every position after
+// the first reads 0 regardless of note count, confirmed across the same
+// captures (see noteRecordFirstByte's callers). Not confirmed beyond 3
+// simultaneous notes; treat as a strong extrapolation past that point,
+// not a certainty.
+func noteRecordFirstByte(position, noteCount int) byte {
+	if position != 0 {
+		return 0
+	}
+	return byte(1 + 5*noteCount)
+}
+
 // EncodeBeat returns a new kit block built from base (an existing kit
 // block's unescaped bytes, used as a template) with the given Kit's name,
 // short name, BPM, swing, and note records written at their confirmed
-// offsets. Every other byte — the pad table, the still-unconfirmed header
-// fields, and the filler region between the note records and the tail —
-// is copied unchanged from base rather than reconstructed, since this
-// package does not know what most of those bytes mean yet. The trailing
-// tail padding is recomputed to match kit's note count.
+// offsets. Note records are synthesized fully from kit — including their
+// non-confirmed bytes, using noteRecordFirstByte for relative offset 0
+// and the confirmed-constant values for offsets 1 and 6-9 (§9.15) — so
+// kit.Notes does not need to match what was in base. Every other
+// byte — the pad table, the still-unconfirmed header fields between
+// offset 7 and KitNameOffset, and the filler region between the note
+// records and the tail — is copied unchanged from base rather than
+// reconstructed, since this package does not know what those bytes mean.
+// The trailing tail padding is recomputed to match kit's note count.
 //
 // Calling DecodeBeat on base and passing the unmodified result straight
 // back to EncodeBeat must reproduce base byte-for-byte — this is the
 // round-trip guarantee TestEncodeBeat_RoundTrip checks against real
 // hardware captures, and it must hold before any write tool
-// (tempest_write_beat) is built on top of this.
+// (tempest_write_beat) is built on top of this. A capture session this
+// package's tests are built from also found that 3-simultaneous-note
+// exports are themselves not perfectly reliable on real hardware — one
+// of two identical attempts corrupted a note's step field — so treat any
+// write built on this as needing a read-back verification step, not a
+// fire-and-forget operation.
 func EncodeBeat(base []byte, kit *Kit) ([]byte, error) {
 	if len(kit.Name) > KitNameLen {
 		return nil, fmt.Errorf("name %q is %d bytes, want at most %d", kit.Name, len(kit.Name), KitNameLen)
@@ -100,20 +128,14 @@ func EncodeBeat(base []byte, kit *Kit) ([]byte, error) {
 	copy(out[KitShortNameOffset:KitShortNameOffset+KitShortNameLen], padRightBeat(kit.ShortName, KitShortNameLen))
 
 	for i, n := range kit.Notes {
-		baseOffset := KitNoteRecordOffset + i*KitNoteRecordLen
-		if i >= len(baseNotes) || baseOffset+KitNoteRecordLen > len(base) {
-			return nil, fmt.Errorf("EncodeBeat: note %d has no corresponding record in base — "+
-				"a note record's non-confirmed bytes (relative offsets 0, 1, 6-9) turn out to vary "+
-				"by position and note count (not constant, contrary to earlier docs), so this package "+
-				"cannot yet fabricate a new record from scratch; base must already contain a note at "+
-				"every position kit.Notes asks for", i)
-		}
 		var rec [KitNoteRecordLen]byte
-		copy(rec[:], base[baseOffset:baseOffset+KitNoteRecordLen])
+		rec[0] = noteRecordFirstByte(i, len(kit.Notes))
+		rec[1] = 0x00
 		rec[2] = byte((n.Step - 1) * 3)
 		rec[3] = 0x77
 		rec[4] = byte(0x80 | n.Track)
 		rec[5] = byte(n.Velocity)
+		copy(rec[6:10], []byte{0x02, 0x00, 0x00, 0x00})
 		out = append(out, rec[:]...)
 	}
 
