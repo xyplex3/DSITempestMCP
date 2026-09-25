@@ -368,17 +368,13 @@ note is a confirmed 80-bit (10-byte) record starting at relative byte 1077,
 with a confirmed step position, a confirmed track-identity byte (`0x80 |
 0-based track index`), and a known-but-noisy velocity byte (§9.1-9.3).
 
-**Beat pattern writing** (`tempest_write_beat`, `tempest_clear_beat`) is
-still blocked on the multi-note case. **The container format is confirmed
-capable of holding multiple notes** - three existing captures show two
-different tracks as clean, correctly-formed consecutive 10-byte records
-(see §9.7). But the obvious follow-up guess ("same/adjacent step is what
-makes it work") doesn't hold up: one of those three has the same step-delta
-as the original failing test, so step-delta alone isn't the distinguishing
-factor, and none of the three were captured under today's verified-clean
-methodology - they may not even be controlled tests. Until a real
-controlled test isolates what actually causes note loss, still too risky to
-implement multi-note writing.
+**Beat pattern writing** (`tempest_write_beat`, `tempest_clear_beat`) is not
+built yet, but the multi-note question that blocked it is resolved: two
+independent, controlled captures (including a reversed track/step
+assignment) both exported and decoded correctly against real hardware
+(§9.13). Writing is now blocked on implementing and round-trip-testing
+`EncodeBeat`/`DecodeBeat` (beat-mapper Step 3 below), not on an open
+research question. Three or more simultaneous notes remain untested.
 
 **Named sound parameter reading** (`tempest_read_sound_params`) is now
 available: the parameter offset table (`internal/sysex/soundparams.go`) was
@@ -548,30 +544,34 @@ a *value* inside a self-contained per-note record (see
 The steps below reflect the current, corrected understanding. Complete them
 in order - each depends on the previous.
 
-#### Step 1 - Resolve multi-note capture (currently blocking, see §9.4/§9.5)
+#### Step 1 - Resolve multi-note capture (done, see §9.13)
 
-The single-note case is done (Step 2 below). What's not yet done is capturing
-more than one note in the same beat without losing one of them - tried three
-times, always losing whichever note was added first. Before writing any
-decoder code:
+Confirmed against real hardware: two independent, controlled captures
+(including a reversed track/step assignment) both exported and decoded
+correctly. The procedure that works:
 
-1. Fresh `Initialize Beat`, then one note on track A1 step 1 via **16
-   Sounds** → tap A1 → **16 Time Steps** → tap step 1 (confirm on screen).
-2. **16 Sounds** → tap A2 → **16 Time Steps** → tap step 2, again confirming
+1. Fresh `Initialize Beat`.
+2. **16 Beats mode → tap the Beat 1 pad**, confirming "1 / Initialize" on
+   screen - do not skip this. The one attempt this session that skipped it
+   reproduced a *different* failure than anything previously logged (a
+   single hybrid record combining one note's track with the other's step),
+   not a clean "lost a note."
+3. One note on track A1 step 1 via **16 Sounds** → tap A1 → **16 Time
+   Steps** → tap step 1 (confirm on screen).
+4. **16 Sounds** → tap A2 → **16 Time Steps** → tap step 2, again confirming
    on screen that A2 is actually selected and the beat number/name hasn't
    changed.
-3. In **Save/Load**, double-check the menu says **Export Beat over
-   MIDI**, not Export Project - the two are adjacent and easy to mix up (this
-   derailed the last attempt at this exact test).
-4. Capture with `cmd/capture-tmp` (`capture-tmp out.syx 2 30
+5. In **Save/Load**, double-check the menu says **Export Beat over
+   MIDI**, not Export Project - the two are adjacent and easy to mix up.
+6. Press Next. If a **"Source Beat"** selection screen appears, confirm it
+   shows the same beat you selected in step 2 before continuing.
+7. Capture with `cmd/capture-tmp` (`capture-tmp out.syx 2 30
    baseline.syx`), which verifies note count from raw file size
    (`5925 + 8×N` bytes) before you trust the result.
 
-If that still loses a note, try the Tempest's **Beat Events** screen
-(`Events` key - row/column soft knobs, explicit Insert/delete) instead of
-pad-taps, a different input path that hasn't been tried yet. See docs §9.4
-for the full history and §9.5 for a related open question about whether
-Export Project reflects live state.
+Three or more simultaneous notes in one beat remain untested. See docs
+§9.13 for both capture results and the fixture files now checked into
+`internal/sysex/testdata/beat-research/`.
 
 #### Step 2 - Confirmed: single-note record format (done, see §9.1-9.3)
 
@@ -582,9 +582,10 @@ against a confirmed-zero-notes baseline, a single active note is an **80-bit
 ```go
 package pattern
 
-// Sequencer note-record layout - confirmed for exactly one active note,
-// see docs/sysex-tempest-format.md §9. Multi-note layout (§9.4/§9.5) is
-// still unresolved - do not assume these offsets repeat per note yet.
+// Sequencer note-record layout - confirmed against real hardware for one
+// and two simultaneous active notes (docs/sysex-tempest-format.md §9,
+// §9.13). Records repeat consecutively per note; three or more notes are
+// untested.
 const (
     SequencerOffset    = 1012 // KitSequencerOffset: pad table ends, note records begin
     NoteRecordBits      = 80  // one active note's record width
@@ -601,9 +602,8 @@ const (
 
 #### Step 3 - Implement and round-trip test `DecodeBeat` / `EncodeBeat`
 
-Only once Step 1 is resolved and the multi-note layout is confirmed (not
-before - building this on an unverified assumption about how records repeat
-risks corrupting real beats). Implement:
+Now unblocked (Step 1 done). Real 0/1/2-note fixtures exist at
+`internal/sysex/testdata/beat-research/` to validate against. Implement:
 
 ```go
 func DecodeBeat(kitPayload []byte) (*Beat, error)
@@ -617,20 +617,18 @@ pass before any write tool is built.**
 #### Step 4 - `tempest_decode_project_beats` / `tempest_analyze_project` (done)
 
 Built ahead of the original sequential order above: these read-only tools
-decode what's already understood today (the 0-note and single-note cases,
-and the full 16-beat Project structure per §9.10) without waiting on Step 1
-
-- they don't need the multi-note layout to be useful, and they surface a
-clear caveat in their own output whenever a beat shows more than one note
-record, since that specific case is still the unverified extrapolation
-described in Step 1. Validated against real hardware-captured `.syx` files.
+decode what's understood today (0/1/2-note cases confirmed per §9.13, and
+the full 16-beat Project structure per §9.10). They surface a caveat in
+their own output whenever a beat shows more than two note records, since
+three-or-more remains untested. Validated against real hardware-captured
+`.syx` files.
 
 #### Step 5 - Add `tempest_write_beat` and `tempest_clear_beat`
 
-Still blocked on Step 1, not Step 4 - writing requires trusting the
-multi-note layout in a way reading doesn't. Validate `DecodeBeat`/`EncodeBeat`
-(Step 3) on real
-hardware.
+Blocked on Step 3, not Step 1 anymore. Validate `DecodeBeat`/`EncodeBeat`
+(Step 3) on real hardware first - writing still carries its own risk
+regardless of how well-understood the format is (no receipt confirmation
+from the Tempest, real overwrite risk).
 
 > **Warning:** Sending a modified Beat/Kit dump risks overwriting the current
 > beat on the Tempest. Always save a backup dump before calling
@@ -792,9 +790,10 @@ field (`sysex.KitNameOffset`). Factory sounds use `/S/Category/Name` prefixes
 > cross-checked against this repo's prior baseline, KnobKraft Orm (Christof
 > Ruch, 2022). The RAM (0x60) bit-packed name field is confirmed (§9.9), and
 > the `0x61` Project format is fully solved (§9.10) - `sysex.ProjectBeats`
-> decodes all 16 beats. Within each beat, the single-note record past
-> `KitSequencerOffset` is confirmed (§9.1-9.3); the multi-note case is not
-> (§9.4/§9.7). Still unconfirmed: the `0x5C`/`0x5E` scheme specifically
+> decodes all 16 beats. Within each beat, the note record past
+> `KitSequencerOffset` is confirmed for one and two simultaneous notes
+> (§9.1-9.3, §9.13); three or more remain untested. Still unconfirmed: the
+> `0x5C`/`0x5E` scheme specifically
 > (assumed uniform with the rest, not independently decoded). Full details
 > in **[docs/sysex-tempest-format.md](docs/sysex-tempest-format.md)**.
 

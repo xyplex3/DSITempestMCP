@@ -494,7 +494,11 @@ func TestLoadDumpOrWait_PathErrors(t *testing.T) {
 // "not connected" error on a disconnected device rather than blocking for
 // the full timeout.
 func TestLoadDumpOrWait_NoPathWaitsForDevice(t *testing.T) {
-	s := &Server{device: midi.New(midi.DeviceConfig{Channel: 10})}
+	// DeviceName must be a value that can't match a real port: an empty
+	// string matches every port name (strings.Contains(x, "") is always
+	// true), which made this test depend on no MIDI hardware being
+	// connected to the machine running it.
+	s := &Server{device: midi.New(midi.DeviceConfig{DeviceName: "no-such-tempest-device-in-test", Channel: 10})}
 	_, err := s.loadDumpOrWait(makeReq(nil), "trigger it")
 	if err == nil {
 		t.Fatal("loadDumpOrWait() expected error on disconnected device, got nil")

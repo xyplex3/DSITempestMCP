@@ -17,7 +17,7 @@ const (
 	TypeFLASH     = 0x63 // Permanent FLASH sound (Bank A/B)
 	TypeAltSound  = 0x5C // Alternate bank sound (standard DSI encoding)
 	TypeAltHeader = 0x5E // Alternate bank global header
-	// TypeBeat is a single Beat/Kit export ("Export Beat in RAM over MIDI",
+	// TypeBeat is a single Beat/Kit export ("Export Beat over MIDI",
 	// available since OS 1.1). Confirmed 2026-09-19 by decoding this
 	// project's own hardware-captured .syx files: real 0x5F messages decode
 	// (via the Kit layout below) to exact, byte-perfect names and BPM values
@@ -278,11 +278,12 @@ type NoteRecord struct {
 // starting at its offset 0), reading consecutively from KitNoteRecordOffset
 // and stopping at the first position that doesn't match the confirmed
 // record shape: marker byte 0x77 at relative offset 3, and the track byte
-// at relative offset 4 with its high bit set. This matches the layout
-// confirmed for a single active note (docs/sysex-tempest-format.md
-// §9.2/§9.3); results with more than one record reflect an unverified
-// extrapolation to the multi-note case (§9.4/§9.7), not an independently
-// confirmed decode.
+// at relative offset 4 with its high bit set. This layout is confirmed
+// against real hardware captures for both the single-note case
+// (docs/sysex-tempest-format.md §9.2/§9.3) and the two-note case (§9.13:
+// two independent, controlled captures — including a reversed track/step
+// assignment — both decoded correctly). Three or more simultaneous notes
+// remain untested.
 func KitNoteRecords(kit []byte) []NoteRecord {
 	var records []NoteRecord
 	for offset := KitNoteRecordOffset; offset+KitNoteRecordLen <= len(kit); offset += KitNoteRecordLen {
@@ -310,8 +311,8 @@ type ProjectBeat struct {
 	BPM       float64
 	Swing     float64
 	// Notes holds the decoded note records for this beat. See
-	// KitNoteRecords' doc comment: entries beyond the first are an
-	// unverified extrapolation, not a confirmed decode.
+	// KitNoteRecords' doc comment: confirmed for up to two simultaneous
+	// notes; three or more remain untested.
 	Notes []NoteRecord
 }
 

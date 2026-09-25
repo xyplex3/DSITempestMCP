@@ -676,7 +676,7 @@ func (s *Server) registerSysExTools() {
 		mcp.WithDescription("Decode a Sound (0x60 RAM/edit-buffer) dump into its on-device name and named "+
 			"synthesis parameters — oscillators, filter, envelopes, LFOs, mod matrix. Provide path to "+
 			"decode a previously saved .syx file, or omit it to wait for a live dump: on the Tempest "+
-			"press Save/Load → Export Sound in RAM over MIDI → Next → USB → Export Now. "+
+			"press Save/Load → Export Sound over MIDI → Next → USB → Export Now. "+
 			"The name is bit-packed and confirmed against 46 real hardware captures (see "+
 			"docs/sysex-tempest-format.md §9.9) — it reflects whatever the sound was last saved/renamed "+
 			"as, not necessarily anything related to the current edits. "+
@@ -700,12 +700,14 @@ func (s *Server) registerSysExTools() {
 			"  2. Recommended: press the Events key to check the Beat Events screen and confirm on-screen "+
 			"which notes are actually present, rather than trusting memory or a different screen.\n"+
 			"  3. Press Save/Load.\n"+
-			"  4. Confirm the screen reads \"Export Beat in RAM over MIDI\" — NOT \"Export Project\". These "+
+			"  4. Confirm the screen reads \"Export Beat over MIDI\" — NOT \"Export Project\". These "+
 			"are adjacent menu items and this mixup has happened repeatedly in real testing.\n"+
-			"  5. Press Next, set destination to USB, press Export Now.\n\n"+
+			"  5. Press Next. If a \"Source Beat\" selection screen appears, confirm it shows the same "+
+			"beat number/name you selected in step 1 before continuing.\n"+
+			"  6. Set destination to USB, press Export Now.\n\n"+
 			"For intent=project:\n"+
 			"  1. Press Save/Load.\n"+
-			"  2. Confirm the screen reads \"Export Project in RAM over MIDI\" — NOT \"Export Beat\".\n"+
+			"  2. Confirm the screen reads \"Export Project over MIDI\" — NOT \"Export Beat\".\n"+
 			"  3. Press Next, set destination to USB, press Export Now.\n"+
 			"  Note: this tool only validates the first incoming SysEx message. A live Project RAM export "+
 			"sends 17 separate messages (one 0x5E header + sixteen 0x5C per-beat messages) — this tool will "+
@@ -713,8 +715,8 @@ func (s *Server) registerSysExTools() {
 			"0x61 dump, use \"Export saved file over MIDI\" from a flash-saved Project instead.\n\n"+
 			"After a Beat dump: reports the byte-count-implied note count (each note adds exactly 8 bytes "+
 			"to the raw dump; see docs/sysex-tempest-format.md §7.3) as a fact for you to check against "+
-			"what you intended — this tool does NOT claim any note configuration reliably exports correctly. "+
-			"Per docs/sysex-tempest-format.md §9.7-9.8, that's still an open research question."),
+			"what you intended. Up to two simultaneous notes are confirmed to export correctly when the "+
+			"procedure above is followed exactly (see §9.13); three or more remain untested."),
 		mcp.WithString("intent", mcp.Required(), mcp.Description("What you're exporting: \"beat\" or \"project\"")),
 		mcp.WithNumber("timeout_sec", mcp.Description("Seconds to wait for the dump (default 30)")),
 	), s.handleExportWizard)
@@ -723,13 +725,13 @@ func (s *Server) registerSysExTools() {
 		mcp.WithDescription("Decode all 16 beats from a Project (0x61) dump: name, short name, BPM, "+
 			"swing, and any detected note records, per beat. Provide path to decode a previously saved "+
 			"\"Export saved file over MIDI\" .syx file (from a flash-saved Project), or omit it to wait "+
-			"for a live dump — trigger it from Save/Load → \"Export Project in RAM over MIDI\" → Next → "+
+			"for a live dump — trigger it from Save/Load → \"Export Project over MIDI\" → Next → "+
 			"USB → Export Now (a live RAM export sends 17 separate messages; this tool only decodes a "+
 			"single self-contained 0x61 dump, so prefer the saved-file export path). Layout confirmed "+
 			"against one real hardware sample — see docs/sysex-tempest-format.md §9.10. "+
-			"IMPORTANT caveats: (1) a beat reported with more than one note record reflects an unverified "+
-			"extrapolation of the single-note-confirmed record format, not an independently confirmed "+
-			"decode — see §9.4/§9.7. (2) Per §9.5/§9.10, a Project export may reflect stale/saved state "+
+			"IMPORTANT caveats: (1) the note-record format is confirmed against real hardware for up to "+
+			"two simultaneous notes (§9.13); three or more remain untested. (2) Per §9.5/§9.10, a "+
+			"Project export may reflect stale/saved state "+
 			"rather than the Tempest's live edit buffer — don't assume it matches what's currently on "+
 			"screen without checking. (3) If beat contents look garbled from some point onward, the most "+
 			"likely cause is an earlier beat's note count being misdecoded, which misaligns every beat "+
@@ -743,9 +745,9 @@ func (s *Server) registerSysExTools() {
 		mcp.WithDescription("Diagnostic summary of a Project (0x61) dump: byte size, how many of the "+
 			"16 beats are still at the default \"Initialize\" state vs. have content, total note "+
 			"records across the whole project, and the same research caveats as "+
-			"tempest_decode_project_beats (stale-vs-live-state uncertainty, unverified multi-note "+
-			"decode, unconfirmed project-header fields beyond name/bpm/swing — see "+
-			"docs/sysex-tempest-format.md §9.5/§9.10/§9.4/§9.7). This is a project-level overview, not "+
+			"tempest_decode_project_beats (stale-vs-live-state uncertainty, note records confirmed up "+
+			"to two simultaneous notes only, unconfirmed project-header fields beyond name/bpm/swing — "+
+			"see docs/sysex-tempest-format.md §9.5/§9.10/§9.13). This is a project-level overview, not "+
 			"a full per-beat dump — use tempest_decode_project_beats for individual beat/note detail. "+
 			"Provide path to analyze a previously saved \"Export saved file over MIDI\" .syx file, or "+
 			"omit it to wait for a live dump (see tempest_decode_project_beats's description for the "+
@@ -902,7 +904,7 @@ func (s *Server) loadDumpOrWait(req mcp.CallToolRequest, triggerHint string) ([]
 }
 
 func (s *Server) handleReadSoundParams(_ context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
-	raw, err := s.loadDumpOrWait(req, "trigger Export Sound in RAM over MIDI from Save/Load on the Tempest")
+	raw, err := s.loadDumpOrWait(req, "trigger Export Sound over MIDI from Save/Load on the Tempest")
 	if err != nil {
 		return fail(err)
 	}
@@ -934,7 +936,7 @@ func (s *Server) handleReadSoundParams(_ context.Context, req mcp.CallToolReques
 }
 
 func (s *Server) handleDecodeProjectBeats(_ context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
-	raw, err := s.loadDumpOrWait(req, "trigger \"Export Project in RAM over MIDI\" or \"Export saved file over MIDI\" from Save/Load on the Tempest")
+	raw, err := s.loadDumpOrWait(req, "trigger \"Export Project over MIDI\" or \"Export saved file over MIDI\" from Save/Load on the Tempest")
 	if err != nil {
 		return fail(err)
 	}
@@ -948,21 +950,21 @@ func (s *Server) handleDecodeProjectBeats(_ context.Context, req mcp.CallToolReq
 
 	var b strings.Builder
 	fmt.Fprintf(&b, "Project %q — %d of %d beats decoded:\n", projectName, len(beats), sysex.BeatsPerProject)
-	multiNoteSeen := false
+	unconfirmedNoteCountSeen := false
 	for _, beat := range beats {
 		fmt.Fprintf(&b, "\nBeat %2d: %q (short: %q)  bpm=%.1f  swing=%.1f%%  notes=%d\n",
 			beat.Index+1, beat.Name, beat.ShortName, beat.BPM, beat.Swing, len(beat.Notes))
 		for _, n := range beat.Notes {
 			fmt.Fprintf(&b, "    track=%d step=%d velocity=%d\n", n.Track, n.Step, n.Velocity)
 		}
-		if len(beat.Notes) > 1 {
-			multiNoteSeen = true
+		if len(beat.Notes) > 2 {
+			unconfirmedNoteCountSeen = true
 		}
 	}
-	if multiNoteSeen {
-		fmt.Fprint(&b, "\nNote: one or more beats above show more than one note record. That's an "+
-			"unverified extrapolation of the single-note-confirmed record format (see "+
-			"docs/sysex-tempest-format.md §9.4/§9.7), not an independently confirmed decode.\n")
+	if unconfirmedNoteCountSeen {
+		fmt.Fprint(&b, "\nNote: one or more beats above show more than two note records. The record "+
+			"format is confirmed against real hardware for up to two simultaneous notes (see "+
+			"docs/sysex-tempest-format.md §9.13); three or more remain untested.\n")
 	}
 	if decodeErr != nil {
 		fmt.Fprintf(&b, "\nDecoding stopped early: %v\n", decodeErr)
@@ -971,7 +973,7 @@ func (s *Server) handleDecodeProjectBeats(_ context.Context, req mcp.CallToolReq
 }
 
 func (s *Server) handleAnalyzeProject(_ context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
-	raw, err := s.loadDumpOrWait(req, "trigger \"Export Project in RAM over MIDI\" or \"Export saved file over MIDI\" from Save/Load on the Tempest")
+	raw, err := s.loadDumpOrWait(req, "trigger \"Export Project over MIDI\" or \"Export saved file over MIDI\" from Save/Load on the Tempest")
 	if err != nil {
 		return fail(err)
 	}
@@ -985,12 +987,16 @@ func (s *Server) handleAnalyzeProject(_ context.Context, req mcp.CallToolRequest
 
 	totalNotes := 0
 	multiNoteBeats := 0
+	unconfirmedNoteCountBeats := 0
 	initializeBeats := 0
 	var customized []int
 	for _, beat := range beats {
 		totalNotes += len(beat.Notes)
 		if len(beat.Notes) > 1 {
 			multiNoteBeats++
+		}
+		if len(beat.Notes) > 2 {
+			unconfirmedNoteCountBeats++
 		}
 		if strings.TrimSpace(beat.Name) == "Initialize" && len(beat.Notes) == 0 {
 			initializeBeats++
@@ -1019,10 +1025,10 @@ func (s *Server) handleAnalyzeProject(_ context.Context, req mcp.CallToolRequest
 		"state rather than the Tempest's live edit buffer — don't assume it matches what's currently "+
 		"on screen without checking.\n"+
 		"  - Per §9.10, the project-header field map beyond name/bpm/swing is mostly unconfirmed.\n")
-	if multiNoteBeats > 0 {
-		fmt.Fprint(&b, "  - Beats reported with more than one note record reflect an unverified "+
-			"extrapolation of the single-note-confirmed record format (§9.4/§9.7), not an "+
-			"independently confirmed decode.\n")
+	if unconfirmedNoteCountBeats > 0 {
+		fmt.Fprint(&b, "  - Beats reported with more than two note records use a record format "+
+			"confirmed against real hardware only up to two simultaneous notes (§9.13); three or "+
+			"more remain untested.\n")
 	}
 	fmt.Fprint(&b, "\nFor full per-beat detail (name, bpm, swing, individual note records), use "+
 		"tempest_decode_project_beats.\n")
@@ -1100,9 +1106,9 @@ func (s *Server) handleExportWizard(_ context.Context, req mcp.CallToolRequest) 
 	if t == sysex.TypeBeatDump {
 		return ok(fmt.Sprintf(
 			"Received Beat/Kit dump (0x5F):\n  Name: %q\n  Size: %d bytes%s\n\n"+
-				"This is an observed fact from byte count alone, per docs/sysex-tempest-format.md §7.3 — "+
-				"it is NOT a claim that this export captured your notes reliably or in the right positions. "+
-				"See §9.7-9.8 for the open questions around multi-note export correctness.",
+				"This is an observed fact from byte count alone, per docs/sysex-tempest-format.md §7.3. "+
+				"Up to two simultaneous notes are confirmed against real hardware to export reliably "+
+				"when the procedure above is followed exactly (§9.13); three or more remain untested.",
 			name, len(raw), beatNoteCountLine(len(raw)))), nil
 	}
 

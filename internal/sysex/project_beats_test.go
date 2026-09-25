@@ -1,6 +1,7 @@
 package sysex_test
 
 import (
+	"os"
 	"strings"
 	"testing"
 
@@ -38,6 +39,65 @@ func padRight(s string, n int) []byte {
 		b[i] = ' '
 	}
 	return b
+}
+
+// decodeBeatCapture loads a hardware-captured Beat/Kit (0x5F) .syx file
+// and returns its decoded note records.
+func decodeBeatCapture(t *testing.T, path string) []sysex.NoteRecord {
+	t.Helper()
+	raw, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatalf("reading %s: %v", path, err)
+	}
+	msgType := sysex.Identify(raw)
+	if msgType != sysex.TypeBeatDump {
+		t.Fatalf("%s: got message type %v, want TypeBeatDump", path, msgType)
+	}
+	unescaped := sysex.Unescape(raw)
+	return sysex.KitNoteRecords(unescaped)
+}
+
+// TestKitNoteRecords_HardwareCaptures decodes two real hardware captures of
+// a controlled two-note Export Beat (docs/sysex-tempest-format.md §9.13):
+// A1/step 1 + A2/step 2, and the reversed A2/step 1 + A1/step 2. Both
+// captures verified via Beat 1/16-Beats-mode selection before editing, the
+// Save/Load "Export Beat over MIDI" -> Source Beat confirmation flow, and
+// independently re-run to rule out a one-off. This is the first confirmed
+// (not extrapolated) validation of the multi-note record layout.
+func TestKitNoteRecords_HardwareCaptures(t *testing.T) {
+	const dir = "testdata/beat-research/"
+
+	t.Run("A1 step1, A2 step2", func(t *testing.T) {
+		got := decodeBeatCapture(t, dir+"twonote_a1s1_a2s2.syx")
+		want := []sysex.NoteRecord{
+			{Track: 0, Step: 1, Velocity: 34},
+			{Track: 1, Step: 2, Velocity: 45},
+		}
+		if len(got) != len(want) {
+			t.Fatalf("KitNoteRecords() = %+v, want %+v", got, want)
+		}
+		for i := range want {
+			if got[i] != want[i] {
+				t.Errorf("record %d = %+v, want %+v", i, got[i], want[i])
+			}
+		}
+	})
+
+	t.Run("reversed: A2 step1, A1 step2", func(t *testing.T) {
+		got := decodeBeatCapture(t, dir+"twonote_a2s1_a1s2.syx")
+		want := []sysex.NoteRecord{
+			{Track: 1, Step: 1, Velocity: 36},
+			{Track: 0, Step: 2, Velocity: 49},
+		}
+		if len(got) != len(want) {
+			t.Fatalf("KitNoteRecords() = %+v, want %+v", got, want)
+		}
+		for i := range want {
+			if got[i] != want[i] {
+				t.Errorf("record %d = %+v, want %+v", i, got[i], want[i])
+			}
+		}
+	})
 }
 
 // TestKitNoteRecords verifies note-record decoding: zero, one, and multiple

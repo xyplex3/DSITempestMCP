@@ -113,7 +113,9 @@ func analyzeBeatDump(msg []byte) {
 	fmt.Printf("- Size per note: %d bytes\n", noteSize)
 	fmt.Printf("- Expected size formula: %d + (%d × note_count)\n", baseSize, noteSize)
 	fmt.Println("- Technical observation: Format supports multiple records when present")
-	fmt.Println("- Research status: No proven techniques for reliable multi-note export yet")
+	fmt.Println("- Research status: up to two simultaneous notes confirmed to export reliably")
+	fmt.Println("  against real hardware when the documented procedure is followed exactly")
+	fmt.Println("  (docs/sysex-tempest-format.md §9.13); three or more notes remain untested")
 }
 
 // analyzeMultiNotePatterns provides detailed analysis of multi-note arrangements
@@ -143,8 +145,9 @@ func analyzeMultiNotePatterns(records []NoteRecord) {
 		fmt.Println("   - May have different export characteristics")
 	case len(steps) == len(records):
 		fmt.Println("📝 Configuration: ALL NOTES ON DIFFERENT STEPS")
-		fmt.Println("   - Matches §9.4 failure pattern (A1 step 1 + A2 step 2)")
-		fmt.Println("   - Research needed: Does this consistently fail?")
+		fmt.Println("   - This configuration (e.g. A1 step 1 + A2 step 2) is confirmed to export")
+		fmt.Println("     reliably against real hardware when the documented procedure is followed")
+		fmt.Println("     exactly (docs/sysex-tempest-format.md §9.13)")
 	default:
 		fmt.Println("📝 Configuration: MIXED STEP PLACEMENT")
 		fmt.Println("   - Some notes share steps, others don't")
@@ -303,8 +306,9 @@ func printDiagnosticSummary() {
 	fmt.Println("TECHNICAL FACT: The SysEx format CAN contain multiple valid note records.")
 	fmt.Println("Some capture files show 2+ complete, well-formed 80-bit records.")
 	fmt.Println("")
-	fmt.Println("RESEARCH STATUS: No proven techniques for reliably producing")
-	fmt.Println("multi-note exports yet. Current best practice is individual note export.")
+	fmt.Println("RESEARCH STATUS: up to two simultaneous notes are confirmed to export")
+	fmt.Println("reliably against real hardware when the documented procedure is followed")
+	fmt.Println("exactly. Three or more simultaneous notes remain untested.")
 	fmt.Println("")
 	fmt.Println("CONTROLLED TESTING: This tool provides raw data for future research.")
 	fmt.Println("See docs/tempest-multi-note-export-guide.md for current status.")

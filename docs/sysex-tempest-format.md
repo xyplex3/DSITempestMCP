@@ -1507,6 +1507,87 @@ elsewhere in this doc (§9.4-9.6 in particular) are left as written, since
 they record what was actually typed/read at the time, not a live
 instruction to follow.
 
+### 9.13 Solved: the two-note capture, confirmed against real hardware (2026-09-25)
+
+Step 1 of the beat-writing roadmap (README's "Steps to unlock beat pattern
+writing") is done. Two independent, controlled two-note Export Beat
+captures both decoded correctly, resolving the question §9.4-9.7 left
+open.
+
+**Procedure that worked, in full:**
+
+1. **Initialize Beat.**
+2. **16 Beats mode → tap the Beat 1 pad**, confirming "1 / Initialize" on
+   screen. This step was missing from the walkthrough on the first attempt
+   this session, which reproduced a *new* failure mode (see below) -
+   skipping it is not merely "easy to miss" per §9.6, it is apparently
+   sufficient on its own to corrupt the result.
+3. **16 Sounds → tap the first track → 16 Time Steps → tap the first
+   step**, confirmed on screen.
+4. **16 Sounds → tap the second track → 16 Time Steps → tap the second
+   step**, confirmed on screen, along with the beat number/name still
+   reading "1 / Initialize."
+5. Confirm both notes visible simultaneously (Events screen or toggling
+   between tracks) before exporting.
+6. **Save/Load → confirm the screen reads "Export Beat over MIDI"** (§9.12),
+   not Export Project.
+7. Press Next. A **"Source Beat" selection screen** appears here - confirm
+   it shows the same beat (1 / Initialize) before continuing. This screen
+   was not previously documented in this repo; it may be the actual
+   mechanism behind the "beat selection" step §9.6 identified in the
+   manual, rather than a separate requirement.
+8. Destination USB, Export Now, captured with `cmd/capture-tmp`.
+
+**First attempt this session (§9.12's original procedure, missing step 2
+above) reproduced a new failure mode, not the previously-logged one.**
+A1 step 1 + A2 step 2 exported as a *single* record reading `track=A1,
+step=2` - not A1's data, not A2's data, but a hybrid combining the first
+note's track with the second note's step. Container size (5187 bytes)
+confirmed exactly one record was present, not a detection miss. This is a
+new, more specific data point than §9.4-9.7's "loses a note" - it suggests
+a single record slot with fields written somewhat independently, at least
+under whatever the fixed procedure was doing differently.
+
+**Two successful attempts, both decoded byte-exact via
+`sysex.KitNoteRecords`:**
+
+| Capture | Input | Decoded |
+|---|---|---|
+| `twonote_a1s1_a2s2.syx` | A1 step 1, A2 step 2 | `{Track:0,Step:1,Velocity:34}, {Track:1,Step:2,Velocity:45}` |
+| `twonote_a2s1_a1s2.syx` | A2 step 1, A1 step 2 (reversed) | `{Track:1,Step:1,Velocity:36}, {Track:0,Step:2,Velocity:49}` |
+
+Both files are saved as hardware-capture fixtures at
+`internal/sysex/testdata/beat-research/` and locked in by
+`TestKitNoteRecords_HardwareCaptures` (`internal/sysex/project_beats_test.go`)
+
+- the first fixture-based (not synthetic) regression test for multi-note
+decoding. `KitNoteRecords`' doc comment, `ProjectBeat.Notes`' doc comment,
+and every "unverified extrapolation" caveat across
+`tempest_decode_project_beats`/`tempest_analyze_project`/
+`tempest_export_wizard` in `internal/server/server.go`, plus
+`cmd/tempest-analyze-beat`'s research-status output, are updated to reflect
+this: **confirmed for up to two simultaneous notes; three or more remain
+untested.**
+
+**What this unblocks:** Step 3 of the roadmap - implementing and
+round-trip-testing `EncodeBeat`/`DecodeBeat` - can now proceed with real
+0/1/2-note fixtures to validate against, rather than being blocked on an
+unresolved multi-note question. Step 5 (`tempest_write_beat`) still
+requires Step 3 first, and still carries its own separate risk (no
+receipt confirmation from the Tempest, real overwrite risk) regardless of
+how well-understood the format is.
+
+**What's still open:** three or more simultaneous notes in one beat -
+untested in either direction (loss pattern or success).
+
+**A side note worth remembering for future capture sessions:** the same
+session also caught a MIDI channel mismatch unrelated to this finding -
+the test hardware's Remote Pad IN Channel was set to 1, not the 10 used in
+the README's example config. Pad-trigger sanity checks (confirming the
+connection is genuinely live, not just enumerated) are worth doing before
+trusting a "no response" result in general, per
+`docs/firmware-analysis.md` §8's results.
+
 ---
 
 ## Suggested next steps for this repo
@@ -1543,22 +1624,18 @@ Done as of this session (see §7 and `internal/sysex/`):
 
 Still open, in priority order:
 
-1. **Isolate exactly when the Export Beat note loss happens** (§9.4/§9.6,
-   corrected by §9.7) - no longer "does this work at all," since §9.7 found
-   three existing captures where Export Beat correctly carried two notes on
-   two different tracks. But the obvious follow-up theory ("same/adjacent
-   step is the difference") doesn't hold up: one of those three working
-   files has the exact same step-delta (1) as the original failing test, so
-   step-delta alone can't be what's distinguishing them - and none of the
-   three were captured under today's verified-clean methodology, so they
-   may not even be controlled tests. Concrete next test, under the current
-   rigorous methodology (fresh Initialize Beat, capture-tmp verification of
-   note count and bar before trusting anything): two tracks at the *same*
-   step, and separately the *same* track at two different steps, to
-   actually isolate which dimension (if either) causes the loss - neither
-   has been run under controlled conditions yet. Also still worth trying:
-   Export Beat immediately after Save Beat to
-   Flash (does saving first change anything?).
+1. ~~Isolate exactly when the Export Beat note loss happens~~ (§9.4/§9.6,
+   corrected by §9.7) - done, see §9.13: two independent controlled
+   captures (including a reversed track/step assignment) both exported and
+   decoded correctly once the full procedure was followed - fresh
+   Initialize Beat, explicit Beat-1 selection in 16 Beats mode before
+   editing, and confirming the Source Beat screen before export. The first
+   attempt that skipped the Beat-1-selection step reproduced a different,
+   new failure mode (a single hybrid record), which is itself informative.
+   Two simultaneous notes on two different tracks/steps is no longer an
+   open question; two tracks at the *same* step and the *same* track at
+   different steps remain untested, as does anything with three or more
+   simultaneous notes.
 2. ~~Decode the `0x61` Project format~~ - done, see §9.10: the extra
    header byte is a path-length prefix like FLASH's, the payload is a
    349-byte project header + 16 kit blocks in the standard `0x5F` layout,
@@ -1575,11 +1652,11 @@ Still open, in priority order:
    A1), verify it on screen, then Export Project immediately - if it still
    doesn't show up, Export Project likely isn't reading the live edit
    buffer the way Export Beat does.
-4. **Validate §9's note-record theory further** - once the Export Beat
-   puzzle (item 1) is solved, confirm the linear track index holds at a
-   higher index or across the A/B bank boundary, and check whether records
-   concatenate as simple consecutive 10-byte blocks the way §9's "sparse
-   list" theory predicts.
+4. **Validate §9's note-record theory further** - the two-note case is now
+   confirmed (§9.13); still untested: whether the linear track index holds
+   at a higher index or across the A/B bank boundary, and whether three or
+   more simultaneous notes still concatenate as simple consecutive 10-byte
+   blocks the way §9's "sparse list" theory predicts.
 5. **Decode the still-unknown constant bytes in the note record** (offsets
    1077, 1078, 1080, 1083-1086, §9.2) - untested against anything that might
    vary them, like gate length or which sound is assigned to the pad.
