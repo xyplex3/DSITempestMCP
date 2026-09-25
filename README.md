@@ -374,15 +374,16 @@ with a confirmed step position, a confirmed track-identity byte (`0x80 |
 0-based track index`), and a known-but-noisy velocity byte (§9.1-9.3).
 
 **Beat pattern writing** (`tempest_write_beat`, `tempest_clear_beat`) is
-done and confirmed against real hardware (§9.16): a synthesized beat sent
-via the real tool handler was read back byte-exact. This closes out the
-whole beat-writing thread that started with the multi-note question
-(§9.13/§9.15) and `EncodeBeat`/`DecodeBeat` (§9.14/§9.15). What's still
-open, not closed by this: whether §9.15's three-note export corruption
-(one of two identical attempts corrupted a note's step field) can also
-happen on a write - both hardware tests behind §9.16 deliberately stayed
-at one note, inside fully-confirmed territory - and which beat slot a
-write lands in / whether that's controllable at all.
+done and confirmed against real hardware for one note (§9.16) and two
+notes (§9.17) - a synthesized beat sent via the real tool handler reads
+back byte-exact both times. This closes out the whole beat-writing thread
+that started with the multi-note question (§9.13/§9.15) and
+`EncodeBeat`/`DecodeBeat` (§9.14/§9.15), and answers two open questions
+along the way: yes, the Tempest genuinely accepts an imported beat
+(§9.11/§9.16), and a write always lands wherever the Tempest's own UI has
+a beat selected, not something addressable from software (§9.17). What's
+still open: three-note writes, consistent with §9.15's read-side
+corruption finding not yet being checked against the write path.
 
 **Named sound parameter reading** (`tempest_read_sound_params`) is now
 available: the parameter offset table (`internal/sysex/soundparams.go`) was
@@ -638,22 +639,22 @@ their own output whenever a beat shows more than two note records, since
 three-or-more remains untested. Validated against real hardware-captured
 `.syx` files.
 
-#### Step 5 - Add `tempest_write_beat` and `tempest_clear_beat` (done, see §9.16)
+#### Step 5 - Add `tempest_write_beat` and `tempest_clear_beat` (done, see §9.16/§9.17)
 
-Both tools built and confirmed against real hardware, two ways: a
-one-off script on `EncodeBeat`/`BuildBeatDump` directly, and separately
-the real `tempest_write_beat` handler itself called through its actual
-JSON-parsing code path. Both sent a synthesized single-note beat and read
-it back byte-exact — name, track, step, and velocity all matched. The
-§9.11 open question (does the Tempest genuinely accept an imported beat,
-not just TempestEdit's own demo) is answered: yes.
+Both tools built and confirmed against real hardware, through the real
+`tempest_write_beat` handler's actual JSON-parsing code path (not just
+the library functions underneath it) — a synthesized beat sent this way
+reads back byte-exact. The §9.11 open question (does the Tempest
+genuinely accept an imported beat, not just TempestEdit's own demo) is
+answered: yes. Confirmed for one note (§9.16) and two notes (§9.17) so
+far; three-note writes are untested, consistent with §9.15's read-side
+corruption finding not yet being checked against the write path.
 
-What's still open, not closed by this: whether §9.15's three-note export
-corruption can also happen on a *write* (both hardware tests here
-deliberately stayed at one note, inside fully-confirmed territory), and
-which beat slot a write lands in / whether that's controllable (both
-tests landed in whatever slot was already selected on the Tempest, not
-one specified in the message itself).
+**Slot targeting confirmed (§9.17):** a write lands wherever the
+Tempest's own UI has a beat selected at receive time — there's no
+slot-addressing field in the message, matching the same pattern already
+established for sound loading. Select the destination on the Tempest
+before calling `tempest_write_beat`; it can't be targeted from software.
 
 > **Warning:** Sending a modified Beat/Kit dump risks overwriting the current
 > beat on the Tempest. Always save a backup dump before calling

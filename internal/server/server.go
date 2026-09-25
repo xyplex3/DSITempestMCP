@@ -759,20 +759,26 @@ func (s *Server) registerSysExTools() {
 
 	s.mcp.AddTool(mcp.NewTool("tempest_write_beat",
 		mcp.WithDescription("Send a modified Beat/Kit dump to the Tempest, replacing its note pattern "+
-			"and/or name/tempo/swing. Confirmed working against real hardware (docs/sysex-tempest-format.md "+
-			"§9.16): a synthesized beat sent this way was accepted and exported back byte-exact. Requires a "+
-			"base Beat/Kit (0x5F) .syx file (export one first with tempest_export_wizard or "+
-			"tempest_save_received_dump) — every byte this tool doesn't understand (the pad table, several "+
-			"still-unconfirmed header fields) is preserved unchanged from that base rather than guessed at. "+
-			"notes REPLACES the base's note records entirely, not merges with them — omit it to keep the "+
-			"base's notes unchanged while only editing name/bpm/swing. Confirmed correct for up to 3 "+
-			"simultaneous notes (§9.15); more are untested. "+
-			"IMPORTANT: this overwrites the beat currently in the Tempest's live edit buffer, and the "+
-			"Tempest gives no receipt confirmation — always export and re-check afterward "+
-			"(tempest_decode_project_beats or another export+read cycle) rather than trusting the send "+
-			"alone. Three-note exports specifically are not perfectly reliable on the Tempest's own side "+
-			"even before this tool is involved (§9.15) — a corrupted read-back may reflect that, not a "+
-			"failed write."),
+			"and/or name/tempo/swing. Confirmed working against real hardware for one note "+
+			"(docs/sysex-tempest-format.md §9.16) and two notes (§9.17): a synthesized beat sent this way "+
+			"was accepted and exported back byte-exact both times. Three-note writes are untested — "+
+			"EncodeBeat's encoding is confirmed correct at three notes (§9.15), but that confirmation is "+
+			"for decoding/re-encoding, not an actual send, and §9.15 separately found three-note *export* "+
+			"from the Tempest isn't perfectly reliable, so a three-note write is genuinely unverified "+
+			"territory, not just an extrapolation. Requires a base Beat/Kit (0x5F) .syx file (export one "+
+			"first with tempest_export_wizard or tempest_save_received_dump) — every byte this tool "+
+			"doesn't understand (the pad table, several still-unconfirmed header fields) is preserved "+
+			"unchanged from that base rather than guessed at. notes REPLACES the base's note records "+
+			"entirely, not merges with them — omit it to keep the base's notes unchanged while only "+
+			"editing name/bpm/swing. "+
+			"IMPORTANT — slot targeting (§9.17): there is no destination field in this message. The write "+
+			"lands on whatever beat is currently selected on the Tempest's own UI (16 Beats mode) at "+
+			"receive time — select the destination on the Tempest before calling this tool, the same as "+
+			"sound loading. It cannot be targeted from software. "+
+			"IMPORTANT — no receipt confirmation: this overwrites the beat currently in the Tempest's live "+
+			"edit buffer, and the Tempest gives no confirmation it worked — always export and re-check "+
+			"afterward (tempest_decode_project_beats or another export+read cycle) rather than trusting "+
+			"the send alone."),
 		mcp.WithString("path", mcp.Required(), mcp.Description("Path to a previously saved Beat/Kit (0x5F) .syx file to use as the base")),
 		mcp.WithString("name", mcp.Description("New beat name (up to 20 chars). Omit to keep the base's name.")),
 		mcp.WithString("short_name", mcp.Description("New short name (up to 8 chars). Omit to keep the base's short name.")),

@@ -1718,11 +1718,39 @@ schemes serve different purposes and aren't interchangeable.
 - §9.15's three-note export corruption was observed on the *read* path.
   Whether the same intermittent issue can also corrupt a *write* is
   untested - both hardware tests here used one note, deliberately staying
-  inside the fully-confirmed territory.
+  inside the fully-confirmed territory. **Resolved for two notes by
+  §9.17** - still open at three.
 - Which beat *slot* a written dump lands in, and whether that's
-  controllable, is unconfirmed - both tests here landed in whatever slot
-  was already selected on the Tempest (Beat 1, per the standing test
-  convention), not a slot specified in the SysEx message itself.
+  controllable. **Resolved by §9.17**: it follows whatever slot is
+  currently selected on the Tempest's own UI, the same pattern already
+  documented for sound loading - not something addressable in the SysEx
+  message itself.
+
+### 9.17 Confirmed: writes target the UI-selected slot; two-note write also works (2026-09-25)
+
+Two follow-up hardware tests, both through the real `tempest_write_beat`
+handler.
+
+**Slot targeting:** selected **Beat 3** on the Tempest (not Beat 1, used by
+every prior write test), then sent a two-note "SlotTest" beat. Result: Beat
+3 received the new pattern; Beat 1 was completely unaffected. This
+confirms `BuildBeatDump`'s standard 4-byte `0x5F` header (§9.16) has no
+slot-addressing field, and a write lands wherever the Tempest's own UI has
+selected at receive time - matching the exact pattern already documented
+for sound loading (`tempest_load_sound`'s bank/slot are recorded locally,
+not sent to the hardware; the front-panel Save/Load prompt picks the real
+destination). There is no way to target a slot from software; the operator
+must select it on the Tempest first, same as every other write/import path
+this project has found.
+
+**Two-note write:** the same test doubled as the first write beyond a
+single note. Read back and decoded with `sysex.DecodeBeat`:
+`A7/step 1/velocity 90` and `A8/step 2/velocity 90`, both byte-exact
+against what was sent. §9.16's write confirmation, previously limited to
+one note out of caution, now extends to two - matching the read side's
+confirmed range (§9.15). Three-note writes remain untested, consistent
+with §9.15's read-side corruption finding not yet being checked against
+the write path.
 
 ---
 
