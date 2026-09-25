@@ -369,12 +369,16 @@ with a confirmed step position, a confirmed track-identity byte (`0x80 |
 0-based track index`), and a known-but-noisy velocity byte (§9.1-9.3).
 
 **Beat pattern writing** (`tempest_write_beat`, `tempest_clear_beat`) is not
-built yet, but the multi-note question that blocked it is resolved: two
-independent, controlled captures (including a reversed track/step
-assignment) both exported and decoded correctly against real hardware
-(§9.13). Writing is now blocked on implementing and round-trip-testing
-`EncodeBeat`/`DecodeBeat` (beat-mapper Step 3 below), not on an open
-research question. Three or more simultaneous notes remain untested.
+built yet, but the two things that blocked it are resolved: the multi-note
+question (§9.13 - two independent controlled captures, including a
+reversed track/step assignment, both exported and decoded correctly
+against real hardware), and `EncodeBeat`/`DecodeBeat` themselves (§9.14 -
+implemented, round-trip tested byte-for-byte against real 0/1/2-note
+captures, and confirmed to support editing a beat's existing notes and
+header fields). What's left before a write tool: validating on real
+hardware (not just the in-repo round-trip test), and - only if
+synthesizing a genuinely new note count is wanted, not just editing
+existing notes - decoding one more unconfirmed byte per record (§9.14).
 
 **Named sound parameter reading** (`tempest_read_sound_params`) is now
 available: the parameter offset table (`internal/sysex/soundparams.go`) was
@@ -592,27 +596,34 @@ const (
     NoteRecordOffset    = 1077 // absolute byte offset of the record (single-note case)
 
     // Byte offsets within one note record, relative to NoteRecordOffset:
+    RecordMarkerByte    = 3 // constant 0x77 in every capture - confirmed marker, not unknown
     RecordStepPosByte   = 2 // step_index * 3 (confirmed §7.4)
     RecordTrackByte     = 4 // 0x80 | 0-based track index (confirmed A1-A3, §9.3)
     RecordVelocityByte  = 5 // noisy/tap-driven (confirmed location, not exact formula)
-    // bytes 0, 1, 3, 6-9: constant in every single-note capture so far,
-    // meaning unknown - see §9.2.
+    // byte 0: NOT constant - varies by record position and note count
+    // (§9.14). bytes 1, 6-9: constant across every capture checked so
+    // far, meaning still unknown - see §9.2/§9.14.
 )
 ```
 
-#### Step 3 - Implement and round-trip test `DecodeBeat` / `EncodeBeat`
-
-Now unblocked (Step 1 done). Real 0/1/2-note fixtures exist at
-`internal/sysex/testdata/beat-research/` to validate against. Implement:
+#### Step 3 - Implement and round-trip test `DecodeBeat` / `EncodeBeat` (done, see §9.14)
 
 ```go
-func DecodeBeat(kitPayload []byte) (*Beat, error)
-func EncodeBeat(kitPayload []byte, beat *Beat) ([]byte, error)
+func DecodeBeat(kit []byte) (*sysex.Kit, error)
+func EncodeBeat(base []byte, kit *sysex.Kit) ([]byte, error)
 ```
 
-Add `TestDecodeBeat_roundtrip`: decode a captured fixture → re-encode →
-compare bytes → must be byte-for-byte identical. **The round-trip test must
-pass before any write tool is built.**
+`internal/sysex/beat_codec.go`. `TestEncodeBeat_RoundTrip` passes
+byte-for-byte against all four `testdata/beat-research/` fixtures
+(0/1/2 notes), and `TestEncodeBeat_EditsConfirmedFields` confirms editing
+name/BPM/swing/an existing note's step-track-velocity actually works, not
+just pure round-tripping. One real limitation surfaced while implementing
+this (§9.14): a note record's non-confirmed bytes (relative offset 0
+specifically) turn out to vary by position and note count, not be a true
+constant as earlier docs assumed - so `EncodeBeat` requires its base
+payload to already contain a record at every position requested, and
+errors rather than guessing if asked to synthesize a genuinely new note
+count (`TestEncodeBeat_CannotSynthesizeNewRecord`).
 
 #### Step 4 - `tempest_decode_project_beats` / `tempest_analyze_project` (done)
 
@@ -625,10 +636,13 @@ three-or-more remains untested. Validated against real hardware-captured
 
 #### Step 5 - Add `tempest_write_beat` and `tempest_clear_beat`
 
-Blocked on Step 3, not Step 1 anymore. Validate `DecodeBeat`/`EncodeBeat`
-(Step 3) on real hardware first - writing still carries its own risk
-regardless of how well-understood the format is (no receipt confirmation
-from the Tempest, real overwrite risk).
+Step 3 is done for editing a beat's existing notes (change step, track,
+velocity, name, BPM, swing) - that path could be wired into a write tool
+today. Synthesizing a beat with a *different* note count than its base
+capture still needs offset 0's real meaning decoded first (§9.14).
+Writing also carries its own risk regardless: no receipt confirmation from
+the Tempest, real overwrite risk - validate thoroughly against real
+hardware before wiring this up, not just the in-repo round-trip test.
 
 > **Warning:** Sending a modified Beat/Kit dump risks overwriting the current
 > beat on the Tempest. Always save a backup dump before calling

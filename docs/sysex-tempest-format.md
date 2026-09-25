@@ -916,6 +916,11 @@ baseline gives this layout for absolute unpacked-payload offsets 1077-1086
 | 1082 (`0x043A`) | `34` (52) | `2D` (45) | `27` (39) | velocity (§7.4, noisy/tap-driven) - matches `capture-tmp`'s independent readout exactly |
 | 1083-1086 | `02 00 00 00` | `02 00 00 00` | `02 00 00 00` | constant across all 3 - meaning unknown |
 
+**Update (§9.14):** offset 1077 (relative offset 0) is only constant within
+this single-note dataset - it varies by record position and note count
+once more than one note is present. Offsets 1078 and 1083-1086 still hold
+up as constant across every capture checked so far, single- or two-note.
+
 ### 9.3 Track identity: `0x80 | track_index` (0-based), byte `0x0439`
 
 Byte 1081 (`0x0439`) is the *only* byte, besides the known-noisy velocity
@@ -1587,6 +1592,34 @@ the README's example config. Pad-trigger sanity checks (confirming the
 connection is genuinely live, not just enumerated) are worth doing before
 trusting a "no response" result in general, per
 `docs/firmware-analysis.md` §8's results.
+
+### 9.14 Correction: the note record's "constant" bytes vary by position/count
+
+§9.2's table found relative offsets 0, 1, 3, 6-9 of the 10-byte note record
+constant across three single-note captures and called them "meaning
+unknown." That finding was correct for the single-note dataset it was
+based on, but implementing `sysex.EncodeBeat` (`internal/sysex/beat_codec.go`)
+against the §9.13 two-note fixtures found it doesn't generalize: relative
+offset 0 is **`0x06`** in every single-note capture, but **`0x0B`** at the
+first record and **`0x00`** at the second record in both two-note
+captures - regardless of which track/step is at which position. It
+depends on record position and total note count, not on track/step, and
+not on nothing (a true constant). The other flagged offsets (1, 6-9) were
+re-checked directly against the raw bytes and still read identically
+across every capture so far, single- or two-note alike - only offset 0
+turned out to vary.
+
+**Practical consequence:** `EncodeBeat` cannot fabricate a new note
+record's non-confirmed bytes from nothing. It requires the base payload it
+patches to already contain a record at every position the caller asks
+for, copying those unconfirmed bytes forward unchanged rather than
+guessing - and returns an error rather than guessing wrong if asked for a
+position the base doesn't have (`TestEncodeBeat_CannotSynthesizeNewRecord`).
+Decoding, and re-encoding any *existing* record's confirmed fields (step,
+track, velocity) with edits, both work today - see
+`TestEncodeBeat_RoundTrip` and `TestEncodeBeat_EditsConfirmedFields`.
+Synthesizing a genuinely new note count beyond what a base capture already
+contains needs offset 0's real meaning decoded first.
 
 ---
 
