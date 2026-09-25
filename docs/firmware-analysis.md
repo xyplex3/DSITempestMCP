@@ -862,7 +862,13 @@ programmatically" - README) has never been explicitly tested with these.
 the Tempest ignores messages it doesn't handle. The one community report of
 a Tempest-side error ("status byte received in data", 2013) was about
 *malformed* framing, so keep every test message complete and well-formed
-(`F0 … F7`).
+(`F0 … F7`). **Updated after testing (see Results below):** "harmless"
+still holds - nothing broke - but a bare Tempest type-byte message (Test 3)
+is not silently ignored the way an unrecognized manufacturer ID is. It
+puts the Tempest into an on-screen "Receiving..." wait state that requires
+a manual Cancel/Exit press to back out of. Low risk (a RAM-buffer receive,
+not a flash write) but not zero-friction - be ready to cancel on the
+Tempest before sending that specific probe family.
 
 ### Test 1 - standard MIDI universal dump request
 
@@ -916,6 +922,51 @@ the cheapest possible win.
   modification (base address → locate the SysEx dispatcher → hook the
   existing export routine → recompute the bootloader checksum → test with
   re-flash-stock recovery).
+
+### Results (tested 2026-09-25, real hardware)
+
+All 8 candidate messages sent to a connected Tempest (Main OS 1.5.0.2,
+USB SysEx cable enabled), using a throwaway `cmd/sysex-probe` tool built
+for this test. Connection verified genuinely live first - via
+`--midi-trace` on a pad-trigger sanity check the Tempest actually
+responded to (after finding and fixing a Remote Pad IN Channel mismatch:
+the hardware was set to channel 1, not the 10 assumed from the README's
+example config).
+
+- **Test 1 (standard MIDI universal dump request, `F0 7E ...`)**: no
+  response, no display change, both shapes.
+- **Test 2 (DSI-style request commands on manufacturer ID `0x2D`)**: no
+  response, no display change, all three shapes.
+- **Test 3 (bare Tempest type-bytes, `F0 01 28 60/61/5F F7`)**: no SysEx
+  came back on the wire, but this is *not* the same as "ignored." The
+  `0x60` probe put the Tempest into an on-screen **"Receiving New Sound in
+  RAM"** state, then **"Receiving MIDI Data..."** - both confirmed
+  firmware strings (§5.1) - and it stayed there until manually cancelled
+  with the Tempest's own Cancel/Exit key. It was waiting to *receive* a
+  Sound dump, not preparing to *send* one.
+
+**Conclusion: no hidden dump-request feature found.** Tests 1 and 2 -
+the actual "is there an undocumented request command" hypothesis - came
+back genuinely silent, not just unanswered-but-recognized. Test 3's
+result, read carefully, is also a negative for the hypothesis: it
+confirms the SysEx dispatcher pattern-matches on
+`F0 01 28 <known-type-byte>` and immediately commits to *write* mode for
+that type (start receiving), with no request/dump-response mode at all
+for the Tempest's own message family. This is consistent with, not
+contrary to, the README's standing claim - the Tempest's SysEx dispatcher
+appears to be receive-only for its own data types, and the "cannot be
+queried programmatically" limitation is real, not just untested.
+
+**Practical follow-up this surfaced:** sending a bare/truncated type-byte
+message is a reliable way to reproduce the "Receiving..." wait state on
+demand, without waiting for a real transfer - useful if the multi-note
+research (§9 of `docs/sysex-tempest-format.md`) ever needs to test how the
+Tempest's receive path behaves when a transfer is interrupted or
+malformed, though that hasn't been tried yet.
+
+**Next step, per the plan above:** the ICSP hardware test (§7 item 5) is
+now the only path forward for both the base-address problem and any
+future firmware-hook work - no code-level shortcut was found.
 
 ---
 
