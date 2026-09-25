@@ -1675,6 +1675,55 @@ Tempest is itself untested - `EncodeBeat`'s correctness and the Tempest's
 own export reliability are two separate questions, and only the first one
 is now well-confirmed.
 
+### 9.16 Solved: the Tempest accepts a synthesized Beat/Kit dump - `tempest_write_beat` built and confirmed (2026-09-25)
+
+The §9.11 open question ("is beat import a real, working path on this
+hardware, not just on TempestEdit's own round-trip demo") is answered:
+yes. `sysex.BuildBeatDump` wraps an `EncodeBeat` payload in the standard
+4-byte `0x5F` SysEx header (no extra path-length byte, matching
+`headerLen`) and escapes it with the existing `Escape7Plus1` - the same
+wire format already confirmed for reading, now confirmed for writing too.
+
+**Two independent hardware tests, both byte-exact on read-back:**
+
+1. A one-off script built directly on `EncodeBeat`/`BuildBeatDump`: sent a
+   synthesized "WriteTest" beat (one note, A5/step 9) from the
+   zero-note baseline fixture. Exported back and decoded: name, track,
+   step, and velocity all matched exactly.
+2. The real `tempest_write_beat` MCP tool handler
+   (`internal/server/server.go`, `handleWriteBeat`), called directly
+   (bypassing the MCP transport, not just the underlying encode/send
+   logic): sent a "HandlerTest" beat (one note, A6/step 13, velocity 80)
+   via its actual JSON-parsing and field-patching code path. Exported back
+   and decoded: every field matched exactly, confirming the tool users
+   will actually call - not just the library functions underneath it -
+   works correctly end-to-end.
+
+**What shipped:** `tempest_write_beat` (replace a base beat's notes and/or
+name/tempo/swing) and `tempest_clear_beat` (a thin wrapper removing all
+notes), both requiring a base Beat/Kit `.syx` file so every byte this
+package doesn't understand is preserved from a real capture rather than
+guessed at. Track names in the tool's `notes` JSON use the sequencer's own
+"A1"-"A16"/"B1"-"B16" convention (`parseTrackName`,
+`internal/server/server.go`), not the pad-trigger name table
+(`kick`/`snare`/etc.) used elsewhere in this server - the two naming
+schemes serve different purposes and aren't interchangeable.
+
+**What's still genuinely open, not closed by this:**
+
+- The Tempest gives no receipt confirmation for a write, matching the
+  existing warning on every export-side tool. `tempest_write_beat`'s own
+  description tells callers to read back and verify, which is exactly
+  what both hardware tests above did manually.
+- §9.15's three-note export corruption was observed on the *read* path.
+  Whether the same intermittent issue can also corrupt a *write* is
+  untested - both hardware tests here used one note, deliberately staying
+  inside the fully-confirmed territory.
+- Which beat *slot* a written dump lands in, and whether that's
+  controllable, is unconfirmed - both tests here landed in whatever slot
+  was already selected on the Tempest (Beat 1, per the standing test
+  convention), not a slot specified in the SysEx message itself.
+
 ---
 
 ## Suggested next steps for this repo

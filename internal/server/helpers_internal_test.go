@@ -546,3 +546,94 @@ func TestFindSound(t *testing.T) {
 		})
 	}
 }
+
+// TestParseTrackName verifies sequencer track-name parsing ("A1"-"A16",
+// "B1"-"B16") into sysex.NoteRecord.Track's 0-based index convention.
+func TestParseTrackName(t *testing.T) {
+	t.Parallel()
+	tests := []struct {
+		name    string
+		track   string
+		want    int
+		wantErr bool
+	}{
+		{name: "A1 is index 0", track: "A1", want: 0},
+		{name: "A16 is index 15", track: "A16", want: 15},
+		{name: "B1 is index 16", track: "B1", want: 16},
+		{name: "B16 is index 31", track: "B16", want: 31},
+		{name: "lowercase accepted", track: "a3", want: 2},
+		{name: "surrounding whitespace trimmed", track: " A2 ", want: 1},
+		{name: "pad number 0 rejected", track: "A0", wantErr: true},
+		{name: "pad number 17 rejected", track: "A17", wantErr: true},
+		{name: "unknown bank rejected", track: "C1", wantErr: true},
+		{name: "non-numeric pad rejected", track: "AX", wantErr: true},
+		{name: "empty string rejected", track: "", wantErr: true},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			got, err := parseTrackName(tt.track)
+			if tt.wantErr {
+				if err == nil {
+					t.Errorf("parseTrackName(%q) expected an error, got %d", tt.track, got)
+				}
+				return
+			}
+			if err != nil {
+				t.Fatalf("parseTrackName(%q) unexpected error: %v", tt.track, err)
+			}
+			if got != tt.want {
+				t.Errorf("parseTrackName(%q) = %d, want %d", tt.track, got, tt.want)
+			}
+		})
+	}
+}
+
+// sysexTestdataPath resolves a path under internal/sysex/testdata to an
+// absolute path, as sanitizePath (used by loadBaseKit) requires.
+func sysexTestdataPath(t *testing.T, rel string) string {
+	t.Helper()
+	abs, err := filepath.Abs(filepath.Join("..", "sysex", "testdata", rel))
+	if err != nil {
+		t.Fatalf("resolving testdata path: %v", err)
+	}
+	return abs
+}
+
+// TestLoadBaseKit verifies loadBaseKit against a real hardware-captured
+// Beat/Kit fixture, and that it rejects a non-Beat file.
+func TestLoadBaseKit(t *testing.T) {
+	t.Parallel()
+
+	t.Run("valid Beat/Kit fixture", func(t *testing.T) {
+		t.Parallel()
+		base, kit, err := loadBaseKit(sysexTestdataPath(t, "beat-research/onenote_a1s1.syx"))
+		if err != nil {
+			t.Fatalf("loadBaseKit() error = %v", err)
+		}
+		if len(base) == 0 {
+			t.Error("loadBaseKit() returned empty base payload")
+		}
+		if kit.Name != "Initialize" {
+			t.Errorf("kit.Name = %q, want %q", kit.Name, "Initialize")
+		}
+		if len(kit.Notes) != 1 {
+			t.Errorf("kit.Notes = %+v, want 1 record", kit.Notes)
+		}
+	})
+
+	t.Run("non-Beat file rejected", func(t *testing.T) {
+		t.Parallel()
+		if _, _, err := loadBaseKit(sysexTestdataPath(t, "sound-research/sound_baseline.syx")); err == nil {
+			t.Error("loadBaseKit() expected an error for a Sound (0x60) file, got nil")
+		}
+	})
+
+	t.Run("missing file rejected", func(t *testing.T) {
+		t.Parallel()
+		if _, _, err := loadBaseKit(sysexTestdataPath(t, "beat-research/does-not-exist.syx")); err == nil {
+			t.Error("loadBaseKit() expected an error for a missing file, got nil")
+		}
+	})
+}

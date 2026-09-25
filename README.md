@@ -21,10 +21,13 @@ receive SysEx dumps.
   files back to the hardware, extract individual sounds from project dumps
 - **Project/Beat decoding** - decode all 16 beats of a Project dump (name,
   BPM, swing, note records) or get a project-level diagnostic summary
+- **Beat writing** - send a modified beat pattern to the Tempest, replacing
+  notes and/or name/tempo/swing on top of a base capture; confirmed
+  byte-exact against real hardware
 - **Export wizard** - guided Save/Load walkthrough that validates the dump
   type that actually arrives, catching the Export Beat/Export Project mixup
 - **Beat research** - `beat-mapper` CLI computes step and track strides from
-  hardware captures to unlock future beat-writing tools
+  hardware captures for continued protocol research
 
 ---
 
@@ -338,6 +341,8 @@ your library.
 | `tempest_export_wizard` | Walk through exporting a Beat or Project correctly and validate the dump type that actually arrives - catches the Export Beat/Export Project menu mixup |
 | `tempest_decode_project_beats` | Decode all 16 beats from a Project (0x61) dump: name, BPM, swing, and any note records, per beat |
 | `tempest_analyze_project` | Project-level diagnostic summary: how many beats still default, total note count, and the same research caveats as the decode tool |
+| `tempest_write_beat` | Send a modified Beat/Kit dump to the Tempest - replace notes and/or name/tempo/swing on top of a base `.syx` file. Confirmed against real hardware (§9.16); always read the result back to verify, the Tempest gives no receipt confirmation |
+| `tempest_clear_beat` | Send a Beat/Kit dump with every note removed, keeping the base's name/tempo/swing (or a new name) |
 
 ### Utilities
 
@@ -368,20 +373,16 @@ note is a confirmed 80-bit (10-byte) record starting at relative byte 1077,
 with a confirmed step position, a confirmed track-identity byte (`0x80 |
 0-based track index`), and a known-but-noisy velocity byte (§9.1-9.3).
 
-**Beat pattern writing** (`tempest_write_beat`, `tempest_clear_beat`) is not
-built yet, but the things that blocked it are resolved: the multi-note
-question (§9.13/§9.15 - controlled captures up to three simultaneous
-notes, including a reversed track/step assignment, exported and decoded
-correctly against real hardware), and `EncodeBeat`/`DecodeBeat` themselves
-(§9.14/§9.15 - implemented, round-trip tested byte-for-byte against real
-0/1/2/3-note captures, and confirmed to support both editing a beat's
-existing notes and synthesizing a genuinely new note count). What's left
-before a write tool is entirely about the *Tempest's own* reliability, not
-this package's encoding: real-hardware validation of an actual write
-(send, then read back and compare - not just the in-repo round-trip test),
-and §9.15's finding that three-note *export* isn't perfectly reliable on
-real hardware (one of two identical attempts corrupted a note's step
-field) - whether that affects writing the same way is untested.
+**Beat pattern writing** (`tempest_write_beat`, `tempest_clear_beat`) is
+done and confirmed against real hardware (§9.16): a synthesized beat sent
+via the real tool handler was read back byte-exact. This closes out the
+whole beat-writing thread that started with the multi-note question
+(§9.13/§9.15) and `EncodeBeat`/`DecodeBeat` (§9.14/§9.15). What's still
+open, not closed by this: whether §9.15's three-note export corruption
+(one of two identical attempts corrupted a note's step field) can also
+happen on a write - both hardware tests behind §9.16 deliberately stayed
+at one note, inside fully-confirmed territory - and which beat slot a
+write lands in / whether that's controllable at all.
 
 **Named sound parameter reading** (`tempest_read_sound_params`) is now
 available: the parameter offset table (`internal/sysex/soundparams.go`) was
@@ -637,26 +638,27 @@ their own output whenever a beat shows more than two note records, since
 three-or-more remains untested. Validated against real hardware-captured
 `.syx` files.
 
-#### Step 5 - Add `tempest_write_beat` and `tempest_clear_beat`
+#### Step 5 - Add `tempest_write_beat` and `tempest_clear_beat` (done, see §9.16)
 
-`EncodeBeat` now supports both editing an existing beat's notes and
-synthesizing a genuinely new note count (up to 3, §9.15) - the encoding
-side is ready to wire into a write tool. Two things to resolve first,
-both about the *Tempest's own reliability*, not this package's encoding:
+Both tools built and confirmed against real hardware, two ways: a
+one-off script on `EncodeBeat`/`BuildBeatDump` directly, and separately
+the real `tempest_write_beat` handler itself called through its actual
+JSON-parsing code path. Both sent a synthesized single-note beat and read
+it back byte-exact — name, track, step, and velocity all matched. The
+§9.11 open question (does the Tempest genuinely accept an imported beat,
+not just TempestEdit's own demo) is answered: yes.
 
-1. **Export reliability at 3 notes is not perfect** (§9.15) - one of two
-   identical controlled capture attempts corrupted a note's step field.
-   Whether this affects *writing* a beat *to* the Tempest the same way
-   Export reliability affects *reading* one *from* it is untested.
-2. No receipt confirmation from the Tempest - a write tool can't verify
-   its own success and must read back the result to check.
-
-Validate thoroughly against real hardware (send, then read back and
-compare) before wiring this up, not just the in-repo round-trip test.
+What's still open, not closed by this: whether §9.15's three-note export
+corruption can also happen on a *write* (both hardware tests here
+deliberately stayed at one note, inside fully-confirmed territory), and
+which beat slot a write lands in / whether that's controllable (both
+tests landed in whatever slot was already selected on the Tempest, not
+one specified in the message itself).
 
 > **Warning:** Sending a modified Beat/Kit dump risks overwriting the current
 > beat on the Tempest. Always save a backup dump before calling
-> `tempest_write_beat`. The Tempest cannot confirm receipt.
+> `tempest_write_beat`. The Tempest cannot confirm receipt — always read
+> the result back and verify, as both hardware tests behind §9.16 did.
 
 ### Steps to unlock named sound parameter editing
 

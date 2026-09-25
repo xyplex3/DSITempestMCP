@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -746,8 +747,8 @@ func (s *Server) registerSysExTools() {
 			"16 beats are still at the default \"Initialize\" state vs. have content, total note "+
 			"records across the whole project, and the same research caveats as "+
 			"tempest_decode_project_beats (stale-vs-live-state uncertainty, note records confirmed up "+
-			"to two simultaneous notes only, unconfirmed project-header fields beyond name/bpm/swing — "+
-			"see docs/sysex-tempest-format.md §9.5/§9.10/§9.13). This is a project-level overview, not "+
+			"to three simultaneous notes, unconfirmed project-header fields beyond name/bpm/swing — "+
+			"see docs/sysex-tempest-format.md §9.5/§9.10/§9.13/§9.15). This is a project-level overview, not "+
 			"a full per-beat dump — use tempest_decode_project_beats for individual beat/note detail. "+
 			"Provide path to analyze a previously saved \"Export saved file over MIDI\" .syx file, or "+
 			"omit it to wait for a live dump (see tempest_decode_project_beats's description for the "+
@@ -755,6 +756,41 @@ func (s *Server) registerSysExTools() {
 		mcp.WithString("path", mcp.Description("Path to a previously saved Project (0x61) .syx file. Omit to wait for a live dump instead.")),
 		mcp.WithNumber("timeout_sec", mcp.Description("Seconds to wait for a live dump if path is omitted (default 30)")),
 	), s.handleAnalyzeProject)
+
+	s.mcp.AddTool(mcp.NewTool("tempest_write_beat",
+		mcp.WithDescription("Send a modified Beat/Kit dump to the Tempest, replacing its note pattern "+
+			"and/or name/tempo/swing. Confirmed working against real hardware (docs/sysex-tempest-format.md "+
+			"§9.16): a synthesized beat sent this way was accepted and exported back byte-exact. Requires a "+
+			"base Beat/Kit (0x5F) .syx file (export one first with tempest_export_wizard or "+
+			"tempest_save_received_dump) — every byte this tool doesn't understand (the pad table, several "+
+			"still-unconfirmed header fields) is preserved unchanged from that base rather than guessed at. "+
+			"notes REPLACES the base's note records entirely, not merges with them — omit it to keep the "+
+			"base's notes unchanged while only editing name/bpm/swing. Confirmed correct for up to 3 "+
+			"simultaneous notes (§9.15); more are untested. "+
+			"IMPORTANT: this overwrites the beat currently in the Tempest's live edit buffer, and the "+
+			"Tempest gives no receipt confirmation — always export and re-check afterward "+
+			"(tempest_decode_project_beats or another export+read cycle) rather than trusting the send "+
+			"alone. Three-note exports specifically are not perfectly reliable on the Tempest's own side "+
+			"even before this tool is involved (§9.15) — a corrupted read-back may reflect that, not a "+
+			"failed write."),
+		mcp.WithString("path", mcp.Required(), mcp.Description("Path to a previously saved Beat/Kit (0x5F) .syx file to use as the base")),
+		mcp.WithString("name", mcp.Description("New beat name (up to 20 chars). Omit to keep the base's name.")),
+		mcp.WithString("short_name", mcp.Description("New short name (up to 8 chars). Omit to keep the base's short name.")),
+		mcp.WithNumber("bpm", mcp.Description("New tempo in BPM. Omit to keep the base's tempo.")),
+		mcp.WithNumber("swing", mcp.Description("New swing percentage, 50-75. Omit to keep the base's swing.")),
+		mcp.WithString("notes", mcp.Description("JSON array replacing the base's notes entirely, e.g. "+
+			"[{\"track\":\"A1\",\"step\":1,\"velocity\":100},{\"track\":\"A2\",\"step\":2,\"velocity\":90}]. "+
+			"track is \"A1\"-\"A16\" or \"B1\"-\"B16\"; step is 1-based. Omit to keep the base's notes unchanged.")),
+	), s.handleWriteBeat)
+
+	s.mcp.AddTool(mcp.NewTool("tempest_clear_beat",
+		mcp.WithDescription("Send a Beat/Kit dump with every note removed, keeping the base's name/tempo/"+
+			"swing (or a new name if given). A thin wrapper over tempest_write_beat with notes forced "+
+			"empty — see its description for the base-file requirement and the same write-then-verify "+
+			"caveats."),
+		mcp.WithString("path", mcp.Required(), mcp.Description("Path to a previously saved Beat/Kit (0x5F) .syx file to use as the base")),
+		mcp.WithString("name", mcp.Description("New beat name (up to 20 chars). Omit to keep the base's name.")),
+	), s.handleClearBeat)
 }
 
 func (s *Server) handleWaitForDump(_ context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
@@ -957,14 +993,14 @@ func (s *Server) handleDecodeProjectBeats(_ context.Context, req mcp.CallToolReq
 		for _, n := range beat.Notes {
 			fmt.Fprintf(&b, "    track=%d step=%d velocity=%d\n", n.Track, n.Step, n.Velocity)
 		}
-		if len(beat.Notes) > 2 {
+		if len(beat.Notes) > 3 {
 			unconfirmedNoteCountSeen = true
 		}
 	}
 	if unconfirmedNoteCountSeen {
-		fmt.Fprint(&b, "\nNote: one or more beats above show more than two note records. The record "+
-			"format is confirmed against real hardware for up to two simultaneous notes (see "+
-			"docs/sysex-tempest-format.md §9.13); three or more remain untested.\n")
+		fmt.Fprint(&b, "\nNote: one or more beats above show more than three note records. The record "+
+			"format is confirmed against real hardware for up to three simultaneous notes (see "+
+			"docs/sysex-tempest-format.md §9.15); four or more remain untested.\n")
 	}
 	if decodeErr != nil {
 		fmt.Fprintf(&b, "\nDecoding stopped early: %v\n", decodeErr)
@@ -995,7 +1031,7 @@ func (s *Server) handleAnalyzeProject(_ context.Context, req mcp.CallToolRequest
 		if len(beat.Notes) > 1 {
 			multiNoteBeats++
 		}
-		if len(beat.Notes) > 2 {
+		if len(beat.Notes) > 3 {
 			unconfirmedNoteCountBeats++
 		}
 		if strings.TrimSpace(beat.Name) == "Initialize" && len(beat.Notes) == 0 {
@@ -1026,14 +1062,147 @@ func (s *Server) handleAnalyzeProject(_ context.Context, req mcp.CallToolRequest
 		"on screen without checking.\n"+
 		"  - Per §9.10, the project-header field map beyond name/bpm/swing is mostly unconfirmed.\n")
 	if unconfirmedNoteCountBeats > 0 {
-		fmt.Fprint(&b, "  - Beats reported with more than two note records use a record format "+
-			"confirmed against real hardware only up to two simultaneous notes (§9.13); three or "+
+		fmt.Fprint(&b, "  - Beats reported with more than three note records use a record format "+
+			"confirmed against real hardware only up to three simultaneous notes (§9.15); four or "+
 			"more remain untested.\n")
 	}
 	fmt.Fprint(&b, "\nFor full per-beat detail (name, bpm, swing, individual note records), use "+
 		"tempest_decode_project_beats.\n")
 
 	return ok(b.String()), nil
+}
+
+// parseTrackName converts a sequencer track name ("A1"-"A16" or "B1"-"B16")
+// to its 0-based track index (0-15 for A, 16-31 for B), matching
+// sysex.NoteRecord.Track's convention.
+func parseTrackName(name string) (int, error) {
+	name = strings.ToUpper(strings.TrimSpace(name))
+	if len(name) < 2 {
+		return 0, fmt.Errorf("invalid track %q: want \"A1\"-\"A16\" or \"B1\"-\"B16\"", name)
+	}
+	bank := name[0]
+	if bank != 'A' && bank != 'B' {
+		return 0, fmt.Errorf("invalid track %q: bank must be A or B", name)
+	}
+	num, err := strconv.Atoi(name[1:])
+	if err != nil || num < 1 || num > 16 {
+		return 0, fmt.Errorf("invalid track %q: pad number must be 1-16", name)
+	}
+	idx := num - 1
+	if bank == 'B' {
+		idx += 16
+	}
+	return idx, nil
+}
+
+// loadBaseKit reads and decodes a Beat/Kit (0x5F) .syx file for use as an
+// EncodeBeat base, returning both the raw unescaped payload (EncodeBeat's
+// base argument) and its decoded Kit (the starting point for edits).
+func loadBaseKit(rawPath string) ([]byte, *sysex.Kit, error) {
+	path, err := sanitizePath(rawPath)
+	if err != nil {
+		return nil, nil, fmt.Errorf("invalid path: %w", err)
+	}
+	raw, err := os.ReadFile(path)
+	if err != nil {
+		return nil, nil, err
+	}
+	if sysex.Identify(raw) != sysex.TypeBeatDump {
+		return nil, nil, fmt.Errorf("%s is not a Beat/Kit (0x5F) dump", path)
+	}
+	base := sysex.Unescape(raw)
+	kit, err := sysex.DecodeBeat(base)
+	if err != nil {
+		return nil, nil, err
+	}
+	return base, kit, nil
+}
+
+// sendKit encodes kit against base and sends the resulting Beat/Kit dump to
+// the Tempest, returning a summary string including the standing
+// write-then-verify warning (see tempest_write_beat's description).
+func (s *Server) sendKit(base []byte, kit *sysex.Kit) (string, error) {
+	encoded, err := sysex.EncodeBeat(base, kit)
+	if err != nil {
+		return "", err
+	}
+	wire := sysex.BuildBeatDump(encoded)
+	if err := s.device.SendRaw(wire); err != nil {
+		return "", err
+	}
+	return fmt.Sprintf(
+		"Sent: name=%q short_name=%q bpm=%.1f swing=%.1f notes=%d. "+
+			"The Tempest cannot confirm receipt — export the beat again and decode it "+
+			"(tempest_decode_project_beats, or capture-tmp) to verify this actually took effect.",
+		kit.Name, kit.ShortName, kit.BPM, kit.Swing, len(kit.Notes)), nil
+}
+
+func (s *Server) handleWriteBeat(_ context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+	if err := s.requireDevice(); err != nil {
+		return fail(err)
+	}
+	base, kit, err := loadBaseKit(strArg(req, "path"))
+	if err != nil {
+		return fail(err)
+	}
+
+	if name := strArg(req, "name"); name != "" {
+		kit.Name = name
+	}
+	if shortName := strArg(req, "short_name"); shortName != "" {
+		kit.ShortName = shortName
+	}
+	if bpm := floatArg(req, "bpm", 0); bpm > 0 {
+		kit.BPM = bpm
+	}
+	if swing := floatArg(req, "swing", -1); swing >= 0 {
+		kit.Swing = swing
+	}
+	if notesJSON := strArg(req, "notes"); notesJSON != "" {
+		var rawNotes []struct {
+			Track    string `json:"track"`
+			Step     int    `json:"step"`
+			Velocity int    `json:"velocity"`
+		}
+		if err := json.Unmarshal([]byte(notesJSON), &rawNotes); err != nil {
+			return fail(fmt.Errorf("invalid notes JSON: %w", err))
+		}
+		notes := make([]sysex.NoteRecord, len(rawNotes))
+		for i, n := range rawNotes {
+			track, err := parseTrackName(n.Track)
+			if err != nil {
+				return fail(err)
+			}
+			notes[i] = sysex.NoteRecord{Track: track, Step: n.Step, Velocity: int(clampUint7(n.Velocity))}
+		}
+		kit.Notes = notes
+	}
+
+	summary, err := s.sendKit(base, kit)
+	if err != nil {
+		return fail(err)
+	}
+	return ok(summary), nil
+}
+
+func (s *Server) handleClearBeat(_ context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+	if err := s.requireDevice(); err != nil {
+		return fail(err)
+	}
+	base, kit, err := loadBaseKit(strArg(req, "path"))
+	if err != nil {
+		return fail(err)
+	}
+	if name := strArg(req, "name"); name != "" {
+		kit.Name = name
+	}
+	kit.Notes = nil
+
+	summary, err := s.sendKit(base, kit)
+	if err != nil {
+		return fail(err)
+	}
+	return ok(summary), nil
 }
 
 // exportWizardWantType maps a validated tempest_export_wizard "intent"
@@ -1107,8 +1276,10 @@ func (s *Server) handleExportWizard(_ context.Context, req mcp.CallToolRequest) 
 		return ok(fmt.Sprintf(
 			"Received Beat/Kit dump (0x5F):\n  Name: %q\n  Size: %d bytes%s\n\n"+
 				"This is an observed fact from byte count alone, per docs/sysex-tempest-format.md §7.3. "+
-				"Up to two simultaneous notes are confirmed against real hardware to export reliably "+
-				"when the procedure above is followed exactly (§9.13); three or more remain untested.",
+				"Up to three simultaneous notes are confirmed against real hardware to decode/encode "+
+				"correctly (§9.13/§9.15), but export reliability at three notes is not perfect — one of "+
+				"two identical controlled attempts corrupted a note's step field (§9.15) — so verify "+
+				"anything exported with three notes by reading it back, not by trusting a single export.",
 			name, len(raw), beatNoteCountLine(len(raw)))), nil
 	}
 

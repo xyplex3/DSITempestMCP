@@ -168,3 +168,20 @@ func padRightBeat(s string, n int) []byte {
 	}
 	return b
 }
+
+// BuildBeatDump wraps an EncodeBeat kit payload in the standard 4-byte
+// Beat/Kit (0x5F) SysEx header (F0 mfg dev 0x5F — TypeBeatDump takes no
+// extra path-length byte, per headerLen) and escapes it for the wire.
+// Untested against real hardware as a receive path — sysex.KitNoteRecords
+// and EncodeBeat are confirmed for the export/decode direction; whether
+// the Tempest accepts a payload built this way and where it routes it
+// (which beat slot) is the open question tempest_write_beat needs to
+// answer before it can be trusted.
+func BuildBeatDump(kitPayload []byte) []byte {
+	escaped := Escape7Plus1(kitPayload)
+	msg := make([]byte, 0, 4+len(escaped)+1)
+	msg = append(msg, 0xF0, ManufacturerID, DeviceID, TypeBeat)
+	msg = append(msg, escaped...)
+	msg = append(msg, 0xF7)
+	return msg
+}
