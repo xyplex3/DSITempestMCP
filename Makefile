@@ -13,6 +13,12 @@ deps:
 ## build: compile the binary to ./tempest-mcp
 build: deps
 	go build -o $(BINARY) ./cmd/tempest-mcp
+	@# Go's linker-applied ad-hoc signature passes `codesign --verify` but is
+	@# rejected by macOS's stricter runtime check the moment the binary opens
+	@# a CoreMIDI connection, killing it with SIGKILL (Code Signature Invalid)
+	@# before it prints a single log line. Re-signing with the system tool
+	@# produces a signature the MIDIServer XPC check accepts.
+	codesign --force -s - $(BINARY)
 
 ## install: build and install to ~/.local/bin (add to PATH if needed)
 install: build
