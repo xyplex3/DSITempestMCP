@@ -328,6 +328,31 @@ type ProjectBeat struct {
 // alongside a non-nil error rather than silently returning garbage for
 // the rest.
 func ProjectBeats(unescaped []byte) ([]ProjectBeat, error) {
+	bounds, err := projectBlockBounds(unescaped)
+	beats := make([]ProjectBeat, 0, len(bounds))
+	for i, b := range bounds {
+		kit := unescaped[b[0]:b[1]]
+		beats = append(beats, ProjectBeat{
+			Index:     i,
+			Name:      extractKitName(kit),
+			ShortName: extractKitShortName(kit),
+			BPM:       KitBPM(kit),
+			Swing:     KitSwing(kit),
+			Notes:     KitNoteRecords(kit),
+		})
+	}
+	return beats, err
+}
+
+// projectBlockBounds walks an unescaped Project (0x61) payload and returns
+// the [start,end) byte bounds, within unescaped, of each of the
+// BeatsPerProject kit blocks packed back-to-back after ProjectHeaderLen
+// (§9.10). Each block's length depends on its own decoded note count, so a
+// wrong count for one block misaligns every later block; on such
+// misalignment this returns the bounds found so far alongside a non-nil
+// error, matching ProjectBeats' own documented behavior (this is the shared
+// walk both ProjectBeats' decode and EncodeProject's write build on).
+func projectBlockBounds(unescaped []byte) ([][2]int, error) {
 	if len(unescaped) < ProjectHeaderLen {
 		return nil, fmt.Errorf("payload is %d bytes, shorter than the %d-byte project header",
 			len(unescaped), ProjectHeaderLen)
@@ -337,31 +362,23 @@ func ProjectBeats(unescaped []byte) ([]ProjectBeat, error) {
 	const maxNotesPerKitBlock = 256
 
 	offset := ProjectHeaderLen
-	beats := make([]ProjectBeat, 0, BeatsPerProject)
+	bounds := make([][2]int, 0, BeatsPerProject)
 	for i := range BeatsPerProject {
 		if offset+KitBlockBaseSize > len(unescaped) {
-			return beats, fmt.Errorf("beat %d: payload truncated at offset %d — only %d of %d beats decoded",
-				i, offset, len(beats), BeatsPerProject)
+			return bounds, fmt.Errorf("beat %d: payload truncated at offset %d — only %d of %d beats decoded",
+				i, offset, len(bounds), BeatsPerProject)
 		}
 		scanEnd := min(offset+KitBlockBaseSize+maxNotesPerKitBlock*KitBlockBytesPerNote, len(unescaped))
 		notes := KitNoteRecords(unescaped[offset:scanEnd])
-		blockLen := KitBlockBaseSize + KitBlockBytesPerNote*len(notes)
+		blockLen := KitBlockLen(len(notes))
 		if offset+blockLen > len(unescaped) {
-			return beats, fmt.Errorf("beat %d: decoded %d note(s) implies a %d-byte block past the payload end — likely misaligned",
+			return bounds, fmt.Errorf("beat %d: decoded %d note(s) implies a %d-byte block past the payload end — likely misaligned",
 				i, len(notes), blockLen)
 		}
-		kit := unescaped[offset : offset+blockLen]
-		beats = append(beats, ProjectBeat{
-			Index:     i,
-			Name:      extractKitName(kit),
-			ShortName: extractKitShortName(kit),
-			BPM:       KitBPM(kit),
-			Swing:     KitSwing(kit),
-			Notes:     notes,
-		})
+		bounds = append(bounds, [2]int{offset, offset + blockLen})
 		offset += blockLen
 	}
-	return beats, nil
+	return bounds, nil
 }
 
 // extractRAMName reads the bit-packed, space-padded 20-char name field of a

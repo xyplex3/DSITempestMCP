@@ -148,6 +148,22 @@ func EncodeBeat(base []byte, kit *Kit) ([]byte, error) {
 	return out, nil
 }
 
+// KitBlockLen returns a kit block's real total unescaped byte length for
+// the given active note count: KitBlockBaseSize plus KitBlockBytesPerNote
+// per note, plus the trailing alignment tail every real kit block carries
+// (see kitTailLen/kitTailPattern) — confirmed against real hardware
+// Beat/Kit captures, whose actual lengths (5180/5187/5194 bytes at 0/1/2
+// notes) are 6/3/0 bytes longer than the pre-tail KitBlockBaseSize+10*n
+// figure alone. Callers that slice a kit block out of a larger buffer by
+// byte length — e.g. ProjectBeats/EncodeProject walking a Project (0x61)
+// payload's back-to-back blocks — must use this, not the bare
+// KitBlockBaseSize+10*n formula, or they'll misalign every block after the
+// first one whose tail is non-empty.
+func KitBlockLen(noteCount int) int {
+	contentLen := KitBlockBaseSize + KitBlockBytesPerNote*noteCount
+	return contentLen + kitTailLen(contentLen)
+}
+
 // swingToRaw inverts KitSwing's raw-to-percent formula (50 +
 // raw*(75-50)/12), rounding to the nearest representable raw value and
 // clamping to the confirmed 0-12 range.

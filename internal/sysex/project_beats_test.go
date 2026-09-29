@@ -14,7 +14,7 @@ import (
 // BPM, swing, and note records placed at their confirmed offsets (see
 // docs/sysex-tempest-format.md §5/§9.1-9.3/§9.10).
 func buildKitBlock(name, shortName string, bpmRaw uint16, swingRaw byte, notes []sysex.NoteRecord) []byte {
-	size := sysex.KitBlockBaseSize + sysex.KitBlockBytesPerNote*len(notes)
+	size := sysex.KitBlockLen(len(notes))
 	kit := make([]byte, size)
 	kit[sysex.KitBPMOffset] = byte(bpmRaw >> 8)
 	kit[sysex.KitBPMOffset+1] = byte(bpmRaw)

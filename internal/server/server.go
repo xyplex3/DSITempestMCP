@@ -797,6 +797,31 @@ func (s *Server) registerSysExTools() {
 		mcp.WithString("path", mcp.Required(), mcp.Description("Path to a previously saved Beat/Kit (0x5F) .syx file to use as the base")),
 		mcp.WithString("name", mcp.Description("New beat name (up to 20 chars). Omit to keep the base's name.")),
 	), s.handleClearBeat)
+
+	s.mcp.AddTool(mcp.NewTool("tempest_write_project",
+		mcp.WithDescription("Send a modified Project (0x61) dump to the Tempest, editing one or more of "+
+			"its 16 beats in a single message. Requires a base Project .syx file (export one first with "+
+			"tempest_export_wizard's intent=project, or tempest_save_received_dump after triggering "+
+			"\"Export saved file over MIDI\" — the RAM \"Export Project over MIDI\" path sends a "+
+			"17-message stream this tool cannot use). Every byte outside the edited beats — the project "+
+			"header and every untouched beat's kit block — is preserved unchanged from the base, the "+
+			"same approach tempest_write_beat uses one level down. "+
+			"IMPORTANT — this is UNVERIFIED against real hardware, unlike tempest_write_beat (confirmed "+
+			"§9.16-9.17 in docs/sysex-tempest-format.md). Whether the Tempest accepts a synthesized "+
+			"Project import via plain SysEx at all, and if so what it does with it (overwrite the "+
+			"currently loaded project? require a specific screen/mode to receive it? land in a saved "+
+			"slot?), has never been tested. Treat the first attempt as an experiment, not a trusted "+
+			"operation — always export and re-check afterward. "+
+			"IMPORTANT — each edited beat's notes REPLACES that beat's note records entirely, not "+
+			"merges with them, same as tempest_write_beat; omit notes for a given edit to keep that "+
+			"beat's existing notes while only changing name/bpm/swing."),
+		mcp.WithString("path", mcp.Required(), mcp.Description("Path to a previously saved Project (0x61) .syx file to use as the base")),
+		mcp.WithString("edits", mcp.Required(), mcp.Description("JSON array of per-beat edits, e.g. "+
+			"[{\"beat\":5,\"name\":\"My Beat\",\"notes\":[{\"track\":\"A1\",\"step\":1,\"velocity\":100}]}]. "+
+			"beat is 1-16 (1-based, matching the Tempest's own 16 Beats mode numbering). name/short_name/"+
+			"bpm/swing/notes are all optional per entry — an omitted field keeps that beat's existing "+
+			"value from the base project. track in notes is \"A1\"-\"A16\" or \"B1\"-\"B16\"; step is 1-based.")),
+	), s.handleWriteProject)
 }
 
 func (s *Server) handleWaitForDump(_ context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
@@ -1209,6 +1234,143 @@ func (s *Server) handleClearBeat(_ context.Context, req mcp.CallToolRequest) (*m
 		return fail(err)
 	}
 	return ok(summary), nil
+}
+
+// writeProjectEdit is one entry of tempest_write_project's "edits" JSON
+// array: a 1-based beat number plus the same optional fields
+// tempest_write_beat exposes for a single beat, applied against that beat's
+// existing decoded values from the base project.
+type writeProjectEdit struct {
+	Beat      int     `json:"beat"`
+	Name      string  `json:"name"`
+	ShortName string  `json:"short_name"`
+	BPM       float64 `json:"bpm"`
+	Swing     float64 `json:"swing"`
+	Notes     *[]struct {
+		Track    string `json:"track"`
+		Step     int    `json:"step"`
+		Velocity int    `json:"velocity"`
+	} `json:"notes"`
+}
+
+// applyProjectEdit builds the edited sysex.Kit for one writeProjectEdit
+// entry, starting from that beat's existing decoded values (src) and
+// overwriting only the fields the edit sets — an omitted field keeps src's
+// value, matching tempest_write_project's documented per-field semantics.
+func applyProjectEdit(src sysex.ProjectBeat, e writeProjectEdit) (*sysex.Kit, error) {
+	kit := &sysex.Kit{Name: src.Name, ShortName: src.ShortName, BPM: src.BPM, Swing: src.Swing, Notes: src.Notes}
+	if e.Name != "" {
+		kit.Name = e.Name
+	}
+	if e.ShortName != "" {
+		kit.ShortName = e.ShortName
+	}
+	if e.BPM > 0 {
+		kit.BPM = e.BPM
+	}
+	if e.Swing > 0 {
+		kit.Swing = e.Swing
+	}
+	if e.Notes == nil {
+		return kit, nil
+	}
+	notes := make([]sysex.NoteRecord, len(*e.Notes))
+	for i, n := range *e.Notes {
+		track, err := parseTrackName(n.Track)
+		if err != nil {
+			return nil, err
+		}
+		notes[i] = sysex.NoteRecord{Track: track, Step: n.Step, Velocity: int(clampUint7(n.Velocity))}
+	}
+	kit.Notes = notes
+	return kit, nil
+}
+
+// buildProjectEditKits validates and applies each writeProjectEdit against
+// beats (the base project's own decoded values), returning the resulting
+// kits keyed by 0-based beat index alongside a one-line-per-edit summary,
+// or the first validation/decode error encountered.
+func buildProjectEditKits(beats []sysex.ProjectBeat, rawEdits []writeProjectEdit) (map[int]*sysex.Kit, []string, error) {
+	kits := make(map[int]*sysex.Kit, len(rawEdits))
+	var summaryLines []string
+	for _, e := range rawEdits {
+		if e.Beat < 1 || e.Beat > sysex.BeatsPerProject {
+			return nil, nil, fmt.Errorf("beat %d out of range 1-%d", e.Beat, sysex.BeatsPerProject)
+		}
+		idx := e.Beat - 1
+		if idx >= len(beats) {
+			return nil, nil, fmt.Errorf("beat %d: base project only decoded %d of %d beats", e.Beat, len(beats), sysex.BeatsPerProject)
+		}
+		kit, err := applyProjectEdit(beats[idx], e)
+		if err != nil {
+			return nil, nil, err
+		}
+		kits[idx] = kit
+		summaryLines = append(summaryLines, fmt.Sprintf("beat %d: name=%q bpm=%.1f swing=%.1f notes=%d",
+			e.Beat, kit.Name, kit.BPM, kit.Swing, len(kit.Notes)))
+	}
+	return kits, summaryLines, nil
+}
+
+func (s *Server) handleWriteProject(_ context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+	if err := s.requireDevice(); err != nil {
+		return fail(err)
+	}
+	path, err := sanitizePath(strArg(req, "path"))
+	if err != nil {
+		return fail(fmt.Errorf("invalid path: %w", err))
+	}
+	raw, err := os.ReadFile(path)
+	if err != nil {
+		return fail(err)
+	}
+	if sysex.Identify(raw) != sysex.TypeProjectDump {
+		return fail(fmt.Errorf("%s is not a Project (0x61) dump", path))
+	}
+	base := sysex.Unescape(raw)
+	beats, err := sysex.ProjectBeats(base)
+	if err != nil {
+		return fail(fmt.Errorf("base project failed to decode cleanly, refusing to edit: %w", err))
+	}
+
+	editsJSON := strArg(req, "edits")
+	if editsJSON == "" {
+		return fail(fmt.Errorf("edits is required — a JSON array of at least one {\"beat\": N, ...} entry"))
+	}
+	var rawEdits []writeProjectEdit
+	if err := json.Unmarshal([]byte(editsJSON), &rawEdits); err != nil {
+		return fail(fmt.Errorf("invalid edits JSON: %w", err))
+	}
+	if len(rawEdits) == 0 {
+		return fail(fmt.Errorf("edits is empty — nothing to write"))
+	}
+
+	kits, summaryLines, err := buildProjectEditKits(beats, rawEdits)
+	if err != nil {
+		return fail(err)
+	}
+
+	encoded, err := sysex.EncodeProject(base, kits)
+	if err != nil {
+		return fail(err)
+	}
+	wire, err := sysex.BuildProjectDump(raw, encoded)
+	if err != nil {
+		return fail(err)
+	}
+	if err := s.device.SendRaw(wire); err != nil {
+		return fail(err)
+	}
+
+	return ok(fmt.Sprintf(
+		"Sent modified project (%d beat edit(s)):\n  %s\n\n"+
+			"UNVERIFIED against real hardware: whether the Tempest accepts a synthesized Project (0x61) "+
+			"import at all — and if so, what it does with it (overwrite the currently loaded project? "+
+			"land in a specific saved slot?) — is not yet confirmed. Unlike tempest_write_beat, this has "+
+			"no hardware confirmation behind it. Always export the project again afterward "+
+			"(tempest_decode_project_beats) and check field-for-field whether this actually took effect "+
+			"before trusting it.",
+		len(kits), strings.Join(summaryLines, "\n  "))), nil
 }
 
 // exportWizardWantType maps a validated tempest_export_wizard "intent"
