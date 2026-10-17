@@ -964,18 +964,17 @@ In priority order, given everything above:
    library `crt0.o`, so there's no reference startup code left to compare
    against. This closes out "get the real source and diff it" as a
    category, not just this one attempt.
-2. **Check whether the Internet Archive is back up**, and if so, search for
-   an older `Tempest_Main_*.syx` release to diff against `1.5.0.2`'s header
-   (§5, item 3) - **fourth check (2026-10-17): partially back, still not
-   usable for this purpose.** Plain `GET web.archive.org/` now returns a
-   normal 200, and a bare-domain CDX query (`sequential.com`, no path)
-   returns real JSON with real snapshots - so the outage itself has
-   eased. But the specific path-wildcard CDX queries needed to actually
-   find an old firmware release (`sequential.com/support/download/
-   tempest-operating-system*`, `sequential.com/wp-content/uploads*Tempest*`)
-   are still unreliable: 2 of 3 attempts returned the "Temporarily Offline"
-   page, 1 returned empty JSON. Not a clean "still down," not a green
-   light either - worth retrying, but don't expect it to just work yet.
+2. ~~Check whether the Internet Archive is back up, and if so, search for
+   an older `Tempest_Main_*.syx` release to diff against `1.5.0.2`'s
+   header~~ **Done, this session - see §14.** Literal `*`-wildcard CDX
+   queries against `sequential.com` are still unreliable (confirmed flaky
+   a fourth time), but querying with `matchType=domain` plus a regex
+   `filter` against DSI's **original pre-rebrand domain**,
+   `davesmithinstruments.com`, worked immediately with no retries and
+   returned 5 additional real firmware releases spanning 2011-2017. This
+   closes out the "need an older release" blocker as a category - if
+   anyone needs more old releases later (other products, later gaps), use
+   this query pattern, not literal wildcards against `sequential.com`.
 3. **Look specifically for a legible photo of Panel's board** - smaller and
    likely less crowded than the analog voice board already found, and per
    §3, whatever chip it uses answers the question for Main too. Two more
@@ -1472,3 +1471,97 @@ search against if this thread continues on Main (not yet tried there) or
 on Panel's remaining uncharacterized islands specifically. It does not
 change the base-address problem (§5) at all - this is a separate,
 narrower question about UI asset storage, not CPU addressing.
+
+---
+
+## 14. Five more firmware releases found - the jump-table negative now replicated across 6 independent builds spanning 2011-2017 (2026-10-17)
+
+The long-blocked "find an older firmware release to diff against" item
+(§5 item 3, §7 item 2) is finally unblocked. **The working Wayback Machine
+technique, for future reference**: literal `*`-wildcard CDX queries
+against `sequential.com` are still unreliable (confirmed flaky again this
+session). The fix is to query with `matchType=domain` plus a regex
+`filter` against DSI's **original pre-rebrand domain**,
+`davesmithinstruments.com` (not `sequential.com`, which didn't exist until
+~2015) - that single query returned 2086 rows with no retries needed.
+
+**Five additional real releases obtained and verified**, each extracted
+and primary-dated from its own readme/file timestamps - a real release
+timeline, not guessed: **1.1 (Dec 2011) -> 1.2 (May 2012) -> 1.3.0 (May
+2013) -> 1.3.0.6 (Aug 2013) -> 1.4 (Jan 2015) -> 1.5.0.2 (Aug 2017)**.
+
+**Panel has been byte-identical since May 2013, confirmed by SHA-256, not
+inferred.** `Tempest_Panel_1.3.syx`'s hash is identical across the 1.3,
+1.3.0.6-bundle, 1.4, and 1.5.0.2 releases - Panel shipped unchanged inside
+every Main release for 4+ years. **Sam has been byte-identical across the
+product's entire released lifetime** (same hash, 1.1 through 1.5.0.2) -
+never updated once. Voice changed a few times; Main is distinct in every
+release, as expected for the actively-developed component.
+
+**The 14 shared header bytes are now confirmed platform-wide and
+version-invariant, not a per-build field.** Comparing all 6 Main releases
+and all 3 distinct Panel releases: bytes 2-15 of the decoded header
+(`40 0f 00 00 00 00 ff ff 00 10 00 00 00 00`) are byte-for-byte identical
+in *every* release of *both* processors across 6 years. This extends last
+session's single-version Main-vs-Panel match into real structural
+evidence, not coincidence.
+
+**Header bytes 0-1, resolved with a mechanism instead of another failed
+checksum guess.** Decoding bytes 0-7 as MIPS32 across all 6 Main versions:
+every single one is `jal <target>; nop` (valid JAL opcode bits, second
+word a true all-zero `nop`, in all six). **Bytes 0-1 are literally the low
+16 bits of a real JAL instruction's target address - not a checksum or
+version tag at all.** This explains, rather than just adds to, the earlier
+checksum-algorithm dead end (§5.5-adjacent): there was never a checksum
+there to find.
+
+**The big result: the same jump-table dispatch function exists in every
+release, always fails the same validity test.**
+
+| Version | file offset | computed table addr (base `0x9D000000`) | cases | valid |
+|---|---|---|---|---|
+| 1.1.3   | `0x2e0` | `0x9D05E3B4` | 45 | **0/45** |
+| 1.2.0.8 | `0x330` | `0x9D065AC8` | 45 | **0/45** |
+| 1.3.0.6 | `0x334` | `0x9D068810` | 40 | **0/40** |
+| 1.3.0   | `0x334` | `0x9D06A378` | 45 | **0/45** |
+| 1.4     | `0x32c` | `0x9D0695F0` | 40 | **0/40** |
+| 1.5.0.2 | `0x3dc` | `0x9D06B860` | 40 | **0/40** (already documented, §5.6) |
+
+Found via the same register-fingerprint idiom scanner already used for
+1.5.0.2 (`sll $t1,$a3,2` ... `lw $a0,($a3)` / `jr $a0`), identified by its
+distinctive register allocation in all 6 binaries. The table's file offset
+naturally shifts release to release as the code around it changes, and
+the computed address tracks that shift consistently - i.e. whatever the
+true base is, file-offset-0 has mapped to the *same* virtual base
+consistently within each build's own internal logic, this just doesn't
+confirm what that base actually is. **Every version, independently, fails
+identically: 0 valid entries.** This is meaningfully stronger than before:
+it rules out "maybe 1.5.0.2 specifically has some anomaly" - the same
+test, against 6 independently-built binaries spanning 6 years, fails the
+same way every time. Much harder to explain as a fluke of one build, much
+easier to explain as "the flat file-offset-0-equals-`0x9D000000` model is
+the wrong model" - the standing §5.6 conclusion, now resting on 6 data
+points instead of 1.
+
+**A separate structural finding in Voice's header** (different chip,
+different header shape entirely - `f0 15 04 00 00 00 ff ff ff...`, not
+Main/Panel's `40 0f...`): bytes 9-20 decode as four sequential 24-bit
+little-endian values, consecutive pairs always exactly 16 or 14 bytes
+apart, all four values well within Voice's own 65,577-byte decoded size -
+reads like a real 4-entry internal offset table, shifting slightly release
+to release the same way Main's jump table does. Not independently
+actionable (Voice's chip remains undocumented custom silicon), but a
+clean, structured, unexplained feature worth keeping on record.
+
+**Decoded firmware size is a fixed architectural constant, not something
+that grew with features.** Every Main version across 6 years decodes to
+exactly 524,609 bytes; Panel/Voice to exactly 65,577; Sam to 32,789 -
+no exceptions across 14 total decoded files.
+
+**Where this leaves things**: the base address itself is not newly
+resolved - nothing here validates or invalidates `0x9D000000` differently
+than before. What changed is confidence in the negative result itself:
+replicated independently 6 times rather than resting on one build. The
+ICSP hardware test (§7 item 5) is unchanged as the standing
+recommendation, more strongly so now that the computational angle has
+been tested as thoroughly as 6 independent binaries allow.
