@@ -1405,3 +1405,70 @@ driver identification remains unconfirmed either way; a physical photo of
 the actual display sub-assembly (not yet captured in this repo) is the one
 thing that would settle it directly, same conclusion as everywhere else in
 this document.
+
+---
+
+## 13. The bitmap asset format, confirmed from Microchip's actual source code - sharpens §10's negative rather than overturning it (2026-10-17)
+
+A follow-up to §10 and §12: given §12 raised real doubt about which
+Graphics toolchain generation Tempest actually uses (Legato/Harmony-3 is
+plausibly too new; the older MLA/GRC generation fits the confirmed
+2012-2017 XC32 era better - §5.3), this session went and found the *older*
+generation's format directly, to give any future bitmap search real
+byte-level targets instead of generic heuristics.
+
+**Found ground truth, not documentation prose.** Microchip's MLA Graphics
+Library source is public on GitHub (`MicrochipTech/mla_gfx`, Apache-2.0) -
+cloned it and read the actual runtime decoder C code, plus a real Graphics
+Resource Converter (GRC v4.00.39, 2013) output example from a separate
+public repo (`luciodj/GTSU-2.0`) to see exactly what the compiler actually
+emits for a real image. (The newer "Microchip Graphics Suite" doc pages
+were Cloudflare-blocked and couldn't be read either way - this is
+specifically the MLA/GRC format, the era-appropriate one per §12, not
+confirmed against Tempest's binary directly.)
+
+**Confirmed format**: each image compiles to two separate pieces, linked
+only by C symbol name - no manifest or table of contents, matching §10's
+finding that nothing manifest-shaped exists in Panel. A fixed **28-byte
+`GFX_RESOURCE_HDR` descriptor** (type/location/width/height/colorDepth/
+paletteID fields, exact offsets verified from the library's own headers)
+pointing to a **separate raw pixel array** in its own `grc_images` linker
+section. Pixel packing confirmed per bit depth directly from the drawing
+routines: 1bpp (4-byte palette + LSB-first-packed rows), 4bpp (32-byte
+palette + 2px/byte, low-nibble-first), 8bpp (512-byte palette + 1
+byte/pixel), 16bpp (no palette, straight RGB565). RLE compression (4/8bpp
+only) confirmed as a simple 2-byte-header (code,value) packet stream.
+**One hardware-specific ruling: DEFLATE/IPU compression requires a
+hardware IPU peripheral that PIC32MX5/6/7 (the confirmed chip family)
+doesn't have** - only RLE or uncompressed is mechanically possible on this
+silicon, narrowing the search space for real.
+
+**A direct, concrete cross-check against §10's existing result - this
+sharpens rather than contradicts it.** Using the confirmed packing
+formulas, a full 256x64 screen bitmap is 2,052 bytes at the smallest
+possible encoding (1bpp) up to 32,768 bytes (16bpp) - every one of these
+is categorically ruled out, since §10 already found the longest
+non-`0xFF` run anywhere in Panel's padding tail is only 302 bytes (at
+least 6.8x too small for even the smallest full-screen encoding). **Only
+small icon-class assets are even size-compatible**: a 32x32 1bpp icon
+(132 bytes), a 16x16 1bpp icon (36 bytes), a 256x8 1bpp status strip (260
+bytes), or similar. This means: if any bitmap asset exists in Panel's
+firmware at all, it can only be a small icon - full screens and any
+meaningful font glyph table are excluded by size alone, independent of
+any pattern-matching.
+
+**Concrete, actionable next step this generates**: §10 already flagged a
+handful of small (<302-byte) non-`0xFF` islands in Panel's padding tail as
+"not fully characterized, low priority." This finding changes that
+assessment - those islands are now the *only* places a bitmap icon could
+possibly be, and there are specific candidate byte counts to check them
+against (36, 132, 160, 260 bytes for 1bpp/4bpp icons and strips at the
+confirmed packing formulas) rather than generic heuristics. Worth a
+focused follow-up check against those exact islands and exact sizes,
+distinct from the broad heuristic sweep §10 already ran.
+
+**Where this leaves things**: a real, source-verified format now exists to
+search against if this thread continues on Main (not yet tried there) or
+on Panel's remaining uncharacterized islands specifically. It does not
+change the base-address problem (§5) at all - this is a separate,
+narrower question about UI asset storage, not CPU addressing.
