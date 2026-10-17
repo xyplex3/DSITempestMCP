@@ -1271,3 +1271,137 @@ the missing USB descriptor and the missing full vector table.
 non-`0xFF` islands scattered through the padding tail - not bitmap/font
 shaped, not ruled out as containing something minor like a calibration
 constant, not pursued further given their size.
+
+---
+
+## 11. Searched for leaked build artifacts from the original toolchain (2026-10-17)
+
+A different kind of lead than anything tried in §5: rather than computing
+the base address from the firmware itself, could an original MPLAB/XC32
+build artifact - an `.elf` file, a `.map` linker file, an MPLAB X project
+(`.X`/`nbproject/`), or an MPLAB 8.x project (`.mcp`/`.mcw`) - have ever
+leaked publicly, for the Tempest or a sibling DSI/Sequential product on the
+same platform (OB-6, Prophet-6, Mopho, per §4.1)? Any one of these would
+hand over the exact load base address directly via its section headers -
+worth a dedicated search even as a long shot.
+
+**Clean negative across 20 targeted queries spanning five angles**: direct
+leaks/leftovers (general web and GitHub/GitLab-scoped search for
+`.elf`/`.map`/MPLAB-project terms combined with Tempest/DSI-800R), the
+sibling-product angle (OB-6/Prophet-6/Mopho firmware or project files),
+DSI/Sequential patent filings (Google Patents, Justia - the only hits were
+two 2022-2025 Sequential Synths Limited *design* patents, post-rebrand,
+ornamental-only, naming Dave Smith as one of four inventors but containing
+no schematics or chip part numbers - nothing from the relevant 2010-2011
+era at all), a standalone firmware-update utility separate from the MIDI
+SysEx path (none found - the MIDI-only path this project already assumes
+is consistent with everything found), and service manuals/schematics with
+a legible chip designation (none found for the Tempest itself).
+
+**One real, tangential find worth keeping**: a full-resolution (2707x1800)
+photo of the shared OB-6/Prophet-6 main board pair exists publicly - imgur
+album `MBGwP`, linked from a 2019 Matrixsynth post
+(`matrixsynth.com/2019/11/inside-sequential-prophet-6-and-ob-6.html`) -
+corroborating §4.1's "shared main board" claim with an actual image rather
+than only a secondhand forum quote. Board silkscreen reads `PCB: DS-1001
+4R P2`, `ASSY: DS-9060`. Each board has two large (~100-144 pin by eye) QFP
+packages side by side, the obvious MCU/FPGA candidates - but their part
+markings are not legible at this photo's resolution even after an 8x
+upscale plus autocontrast/sharpen pass. This is a *calibrated* negative,
+not an under-effort one: a nearby small-signal component's silkscreen
+reference designator (`U9`) is crisply legible at the same crop
+resolution, so the photo is adequate for high-contrast white silkscreen
+ink but genuinely insufficient for the low-contrast marking on a dark chip
+top - not proof the chips are deliberately blacktopped, just evidence this
+specific photo can't resolve them either way. Worth rechecking if a
+higher-resolution version of the same album ever surfaces.
+
+**Where this leaves things**: no software or documentation shortcut exists
+for the base-address problem - this was always a long shot, and it's now a
+confirmed one, not an abandoned one. The ICSP hardware test (§7 item 5)
+remains the one recommendation this search adds no alternative to.
+
+---
+
+## 12. The Graphics Composer asset format, found and tested - clean negative, plus a real reason to doubt the whole theory (2026-10-17)
+
+Follow-up to §5.2's open question (UI text isn't plain ASCII, hex, or
+UTF-16 anywhere in the firmware - "most likely explanation, not confirmed"
+was a proprietary Graphics Composer asset blob). This session found an
+actual documented format and tested it properly, rather than leaving it at
+"documented to exist."
+
+**A real binary layout exists, straight from Microchip's own source.**
+Cloned Microchip's public `Microchip-MPLAB-Harmony/gfx` GitHub repo and
+found `stringtable.py`, the actual asset-generator script, which contains
+an explicit byte-layout comment for the string-table blob it emits: a
+2-byte index count, 1-byte index size, 1-byte language count, an index
+array of (font ID + offset) entries, and length-prefixed string data at
+each offset. Real, not guessed.
+
+**Applied it as a structural search, validated against a noise-baseline
+control - clean negative.** Brute-forced every byte offset in both Main
+and Panel as a candidate table header (generous ranges: 2-400 indices,
+1-3-byte index size, 1-4 languages), scored how many index entries resolve
+to plausible strings. At a 50%-resolve threshold: 0 candidates, either
+file. Relaxed to "any fraction, >=4 entries": Panel's best was 0%; Main's
+best was 2.7% (7/257, all `"\t"` repeats, not real words) - and a control
+scan of same-size `os.urandom` data found **0 candidates even at the
+relaxed threshold**, confirming Main's weak 2.7% is itself indistinguishable
+from the kind of incidental printable-byte runs ordinary compiled code
+produces, not a real signal. None of the known manual anchor phrases
+(`"16 Sounds"`, `"Quantize"`, etc.) appear in any candidate.
+
+**A genuinely important caveat, worth treating as a correction to the
+standing theory, not just a footnote**: the specific format tested
+("Legato," Harmony 3-era) launched around 2017-2018 - right at or after
+Tempest's 2017 firmware build date, meaning it's plausibly *too new* to be
+what actually built this firmware. Further research found that the
+*older*, era-appropriate tooling (GOL/GRC, used with MLA/early-Harmony,
+circa 2008-2012 - the right generation for a 2010-designed product) works
+completely differently: **it compiles assets into ordinary `.c`/`.h`
+source files, linked normally into `.rodata`, not an opaque binary blob at
+all.** This is a real argument against the "proprietary asset blob"
+explanation that's been the leading theory since §5.2, not just an
+unresolved detail - if GOL/GRC is what Tempest actually used, UI text
+would be ordinary string constants in `.rodata`, indistinguishable from
+any other string without solving the base-address problem to read them in
+context, not hiding behind an undecoded format at all. Not pursued further
+this session (the GOL/GRC source/spec itself wasn't located), but worth
+treating as the more promising lead than continuing to chase the Legato
+hypothesis, if this thread continues.
+
+**Display driver IC: SSD1322 is a strong circumstantial candidate, but
+nothing confirms it.** Re-confirmed (independently) that none of this
+repo's 5 board photos show the OLED display or a nearby driver chip - the
+photographed "panel" board is specifically the button/pad matrix, which
+may not even be the same physical board as the display per §4's existing
+caveat. Researched candidate controllers: **SSD1322** (Solomon Systech)
+fits on three independent grounds - commercial 256x64-pixel OLED modules
+built specifically around it exist and are well-documented (Newhaven
+NHD-3.12-25664/NHD-2.8-25664 families), its datasheet's relevant revision
+(v1.2, Jul 2010) lines up with the board's 2010 silkscreen date, and its
+interface options (SPI/parallel, no I2C) are standard embedded-MCU
+choices. **But it's circumstantial only**: SSD1322 doesn't appear as a
+named built-in driver in any version of Microchip's Graphics Library
+documentation checked (not disqualifying - a custom driver against the
+library's generic display abstraction is normal - but it means "the
+library supports it" isn't corroborating evidence either). A firmware-side
+check (searching Panel for literal SSD1322 init-command byte sequences,
+including the specific `CA 3F` "64MUX" value a genuine 256x64 panel would
+use) found **zero hits anywhere**, including in the dense 18.4KB code
+region where a literal init table would most plausibly live - consistent
+with (not proof of) the same "not present in this field-updatable image"
+explanation already used elsewhere in this doc.
+
+**Where this leaves things**: a real format was found and properly
+eliminated (with a noise-baseline control, the standard this doc holds
+itself to) rather than left as a vague "probably a binary blob." The more
+important output is the correction to the underlying theory - GOL/GRC-era
+plain `.rodata` strings is now a better-supported hypothesis than an
+undecoded proprietary blob, and is worth checking first if this thread
+continues, rather than continuing to chase the Legato format. Display
+driver identification remains unconfirmed either way; a physical photo of
+the actual display sub-assembly (not yet captured in this repo) is the one
+thing that would settle it directly, same conclusion as everywhere else in
+this document.
