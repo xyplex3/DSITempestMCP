@@ -746,6 +746,182 @@ confirming USB-related application code exists: `"USB not connected"`. But:
   included in these field-updatable `.syx` OS images at all - similar to why
   the full reset/exception vector table isn't fully present either (§5.4).
 
+### 5.6 The real chip family, found via Microchip's own datasheet - base address confirmed, but two independent jump-table tests against it still fail (2026-10-17)
+
+Previous attempts (§5.1-5.5) all tested `0x9D000000` as a *borrowed* base
+address - taken from a generic PIC32MX210 linker-script example with no
+connection to this specific product. This session found the real chip
+family and confirmed the number for real, but that still wasn't enough to
+unlock disassembly - documented here in full since it changes *why* the
+base address is trusted without changing *whether* decompilation works yet.
+
+**The real chip family, identified for the first time.** Downloaded
+Microchip's actual **PIC32MX5XX/6XX/7XX Family Datasheet** (DS60001156)
+and the **MIPS32 M4K Processor Core Software User's Manual** (MD00249) -
+real documents, not examples. Two independent facts, both confirmed:
+
+1. The MIPS32 architecture itself fixes the Reset/Soft Reset/NMI exception
+   vector at `0xBFC00000` unconditionally (not configurable), and `EBase`
+   (CP0 register 15, select 1) resets to `0x80000000` with bits 31:30
+   hardwired to `2#10` - explaining *why* software reprograms it into the
+   `0x9D`-`0xBF` range, not just that it does.
+2. **The datasheet's own memory-map figure (Figure 4-5, which specifically
+   covers the 512KB-flash 575/675/775 variants) gives real, chip-specific
+   numbers for the first time**: Program Flash = virtual
+   `0x9D000000`-`0x9D07FFFF` (KSEG0) / physical `0x1D000000`-`0x1D07FFFF`,
+   exactly 512KB. Boot Flash = virtual `0x9FC00000`/`0xBFC00000` / physical
+   `0x1FC00000`, ~12KB, ending in 16 bytes of Device Configuration
+   registers (`...2FF0`-`...2FFF`).
+
+**Flash-size math narrows the real chip to exactly 8 part numbers.** PIC32MX
+(M4K core) tops out at 512KB of flash - anything bigger needs PIC32MZ
+(microAptiv core), ruled out by the board's 2010 silkscreen date predating
+that core by years. The family datasheet lists exactly 8 parts at 512KB,
+split by extra peripherals: **575F512H/L** (USB+CAN), **675F512H/L** and
+**695F512H/L** (USB+Ethernet), **775F512H/L** and **795F512H/L**
+(USB+Ethernet+CAN). The Tempest has neither an Ethernet nor a CAN port, so
+575 is the best-supported single guess if DSI picked the cheapest part
+meeting their actual I/O needs - but a shared-SKU product line could still
+mean any of the 8, which doesn't matter for the memory map, identical
+across all of them.
+
+**A genuinely new quantitative cross-check, and it fits almost exactly.**
+512KB Program Flash = 524,288 bytes exactly. Main's own confirmed decoded
+size is 524,609 bytes (`0x80141`) - only **321 bytes over**. Too small to
+also include the ~12KB Boot Flash region, consistent with (not proving) the
+standing assumption that the `.syx` OS-update image is Program-Flash-only.
+
+**Correction, same session, follow-up delegated task: the 321-byte overage
+is not a meaningful trailer - it's erased-flash padding, and real content
+actually ends *before* the 512KB mark, not after it.** Checked the actual
+bytes: the last byte of Main (file offset `0x80140`) is `0x3A`; the last 512
+bytes measure ~0.04 bits of entropy (essentially constant). The file's last
+long `0xFF` run spans decimal offset 523,796-524,604 (809 bytes) - starting
+**492 bytes before** the exact-512KB mark (524,288) and continuing 316
+bytes past it, straddling the boundary, followed by only three stray
+non-`0xFF` bytes before the literal end. Decode density in that final
+region is 0/203 = 0%. Bigger picture: the last ~27KB of the file (from
+~offset 497,532 on) is dominated by repeated ~1024-byte `0xFF` blocks (33
+runs ≥100 bytes found total) - classic unprogrammed/erased-flash padding,
+not content. **The compiled image doesn't fill the full 512KB at all; real
+content tapers off around offset ~523,796, well before either the 512KB
+mark or the file's own literal end.** Practical implication for base-address
+work: don't trust anything in the last ~27KB of Main as meaningful, and
+stop treating "the file is 321 bytes over 512KB" as evidence of a
+header/trailer structure - it isn't one.
+
+**Re-downloaded the real firmware fresh this session**
+(`sequential.com/wp-content/uploads/2017/08/Tempest_OS_1.5.0.2.zip` - the
+real working link found via the support page; a guessed URL from memory of
+a prior session's path 404'd) and re-derived the unescaped payload from
+scratch with an independent Python reimplementation of `Unescape7Plus1`,
+landing on the identical 524,609 bytes - confirms the method is
+reproducible from zero, not dependent on any state left over from a prior
+session (none of which persists on disk between sessions anyway).
+
+**Re-ran the already-known 40-entry jump table (file offset `0x3d0`,
+computed table address `0x9D06B860`, found via `lui $t2,0x9d07` /
+`sll $t1,$a3,2` / `addiu $v1,$t2,-0x47a0`) against the now-confirmed base:
+still 0/40 valid** at `0x9D000000` exactly - reproduces the prior session's
+negative result, now against an evidence-based base rather than a guess.
+Widened to a ±128KB window (motivated by a real forum example of a
+different PIC32 project reserving `0x11000` bytes for its own bootloader
+before the real vector table) - best found was 12/40 at a shift cluster
+around -38,300 bytes, but the actual 40 values there show a regular,
+smoothly-varying pattern characteristic of structured data (most likely
+embedded factory sound-parameter presets) being sampled by a sliding
+window, not real function pointers - the same false-positive shape §5.5's
+coincidence-rate reasoning would predict, not a real signal.
+
+**Found a second, independent jump table with a corrected search script**
+(the first attempt's script had a real bug - it required `lui`+`addiu` to
+sit adjacent, but the true idiom interleaves `sll` between them; fixed to
+track the destination register instead of position). The second table, at
+file offset `0x603c0` (computed table address `0x9D07862C`), is a 25-case
+dispatch reached via `addiu $v1,$v0,-0x5c` before the range check -
+dispatching on `(something - 0x5C)`, and `0x5C` is this project's own
+confirmed `TypeAltSound` SysEx byte, with the 25-case range (`0x5C`-`0x74`)
+spanning every known Tempest SysEx type byte (`0x5C`-`0x63`). A genuinely
+suggestive numeric coincidence - **but it also tested 0/25 valid** at the
+confirmed base, and unlike the first table's near-miss, these 25 values
+don't even superficially resemble addresses (mostly small values with many
+zero bytes, e.g. `0x00820E12`). Treat the `0x5C` match as circumstantial,
+not confirmed - 92 is also just a common small integer that could appear in
+an unrelated enum.
+
+**Panel showed a different, still-unconfirmed signal.** Panel has only 6
+total `lui`+`addiu`/`ori` same-register pairs in its entire 65,577-byte
+file (very sparse - most of Panel is data, not code: a per-word capstone
+decode scan finds only 21.2% of the file decodes as valid MIPS32 at all).
+Two of the 6 compute *physical* addresses `0x1D004740` (file offset
+`0x3688`) and `0x1D004641` (file offset `0x374c`) - the datasheet-confirmed
+physical Program Flash prefix, found this time in actual firmware code
+rather than a datasheet. The `0x374c` site sits in a region decoding at
+75-82% density versus Panel's ~21% file-wide baseline - a real,
+address-independent signal that this is credibly genuine code, not
+coincidence - and is immediately followed by `lbu $a2,($v0)` (a byte read
+from that computed address) then a `jal` call, consistent with (not proof
+of) flash read/verify code. This doesn't resolve Main's base-address
+problem (different chip, different firmware), but it's a second real data
+point - now found in running code, not just read from a datasheet -
+supporting that the family's documented physical addressing scheme is
+genuinely in use here.
+
+**Follow-up (same session, delegated to a background agent): the NVM-unlock
+search was redone exhaustively across all of Panel, and the `0x3688` site
+was density-checked and traced further - clean negative on the unlock,
+upgraded confidence on the site itself.** Searched Panel's entire
+65,577-byte file for the standard PIC32 NVM unlock (`0xAA996655` then
+`0x556699AA` into NVMKEY) two independent ways: every `lui $reg,0xaa99`/
+`lui $reg,0x5566` at any disassembled position, and a raw byte-pattern scan
+for the literal constants as data in both byte orders. **Zero hits, either
+way, anywhere in the file** - not just near `0x374c`. This doesn't disprove
+`0x374c` is flash-related code, but rules out this specific Panel image
+performing a self-write under the standard unlock protocol itself; most
+likely the real NVM-write/bootloader code lives outside this
+field-updatable `.syx` image, consistent with the missing vector table and
+missing USB descriptor pattern already established elsewhere in this doc
+(§5.4, §5.5). Separately, `0x3688` (computed `0x1D004740`) density-checked
+at 75-81% across three window sizes versus the same ~21.2% file-wide
+baseline - equally credible as real code as `0x374c`, and in fact the same
+~0x3600-0x3900 contiguous block: a full linear disassembly of that range
+reads as one coherent function computing both `0x1D004740` and
+`0x1D004641`, and - a new detail - also doing `lui $t3,0x9d00` at file
+offset `0x37d0`, a `0x9D00xxxx` **virtual** KSEG0 load in the very same
+function that computes the two physical addresses. One function apparently
+referencing both the physical and virtual forms of the Program Flash range
+is a real, specific detail worth tracing further if this thread continues,
+not yet interpreted beyond that.
+
+**Also done this session: an exhaustive search for a `$gp`-relative or
+PC-relative jump table in Main, specifically to extend the two
+already-tested absolute-pointer tables - clean, fairly conclusive
+negative.** Per-word-decoded all of Main and found every `jr` through a
+register fed by a preceding `lw` within a 20-instruction lookback - a
+necessary condition for *any* table-indexed jump regardless of addressing
+style, since the final step is always `lw entryreg,0(addrreg); jr entryreg`.
+Only **4 such candidates exist in the entire file**: the two already-known,
+already-tested tables (`0x3d0`/`0x603c0`, both already 0/40 and 0/25
+against the confirmed base), and two new ones (`jr $t3` at `0x2ce58`, `jr
+$k1` at `0x35060`) that turned out to match *neither* requested idiom -
+`$gp` is confirmed used as an addressing base 157 times elsewhere in Main,
+but never once feeds a register that reaches a `jr`; neither new site has
+any `addu`/`add` between its defining `lw` and its `jr` either, so there's
+no index-scaling step - they're plain indirect calls through a struct
+field, not jump tables. Given the fixed-width per-word method, this is
+exhaustive for a 20-instruction lookback, not merely "didn't find one yet."
+
+**Where this leaves things.** Two independently-found, real (not guessed)
+jump tables in Main now both fail to validate against the one base address
+that has actual chip documentation behind it. That's stronger negative
+evidence than any single-table result alone: it's not "this one table
+happens to be unrelated to SysEx," it's "the simple file-offset-0-equals-
+virtual-`0x9D000000` model doesn't hold for anything tried yet." Combined
+with Panel's partial, physical-address-prefix-only confirmation, the
+standing recommendation is unchanged and now more clearly the right call:
+**the ICSP hardware test (§7 item 5) is the one path that doesn't depend on
+guessing a model this many independent checks keep failing to validate.**
+
 ## 6. Tooling reference (for picking this back up)
 
 None of this is committed to the repo (it's general-purpose reverse
@@ -790,10 +966,16 @@ In priority order, given everything above:
    category, not just this one attempt.
 2. **Check whether the Internet Archive is back up**, and if so, search for
    an older `Tempest_Main_*.syx` release to diff against `1.5.0.2`'s header
-   (§5, item 3) - **re-checked again this session (third check overall,
-   direct `curl` against the raw CDX API, not just the browser): still the
-   same "temporarily offline" outage page.** This is now a multi-session,
-   multi-hour-plus outage. Worth a periodic check, not a repeated one.
+   (§5, item 3) - **fourth check (2026-10-17): partially back, still not
+   usable for this purpose.** Plain `GET web.archive.org/` now returns a
+   normal 200, and a bare-domain CDX query (`sequential.com`, no path)
+   returns real JSON with real snapshots - so the outage itself has
+   eased. But the specific path-wildcard CDX queries needed to actually
+   find an old firmware release (`sequential.com/support/download/
+   tempest-operating-system*`, `sequential.com/wp-content/uploads*Tempest*`)
+   are still unreliable: 2 of 3 attempts returned the "Temporarily Offline"
+   page, 1 returned empty JSON. Not a clean "still down," not a green
+   light either - worth retrying, but don't expect it to just work yet.
 3. **Look specifically for a legible photo of Panel's board** - smaller and
    likely less crowded than the analog voice board already found, and per
    §3, whatever chip it uses answers the question for Main too. Two more
@@ -1018,3 +1200,74 @@ asking Leviathant (TempestEdit's author, who has mapped more of the
 Tempest's SysEx behavior than anyone outside DSI) whether he knows of an
 existing request command - the Gearspace post asking Chris Pym is still
 pending a reply (§7 item 4).
+
+---
+
+## 10. Front-panel control data: searched for and not found in Panel's firmware (2026-10-17)
+
+A different angle from §5's base-address thread: does Panel's firmware
+contain embedded lookup tables (pad-to-LED mappings, button scan tables,
+display bitmap/font data) that correspond to the physical front panel
+described in the official manual? Motivated by Panel's large "non-code"
+fraction (§5.6: only ~21% of the file decodes as valid MIPS32).
+
+**Manual facts, confirmed from the PDF text itself** (`pdftotext -layout`
+on all three manual versions, grepped for panel-control language, not
+inferred): **16 physical pads**, arranged "in a 2x8 configuration" (not a
+4x4 grid as this doc previously assumed in places), pressure- and
+velocity-sensitive, multiplexed across modes (16 Sounds, 16 Beats, 16 Time
+Steps, etc.). **Two banks (A/B) of 16 pad-sounds each** - the manual's own
+text states "thirty-two Sounds (sixteen in pad bank A and sixteen in pad
+bank B)" per Beat, not a guess. **4 Soft Knobs, 1 Soft Key.** **2 Real Time
+FX touch strips.** **"Ninety panel controls"** total (the manual's own
+marketing-copy phrase). **Graphic OLED display, but the manual itself never
+states a pixel resolution anywhere in any of the three versions checked**
+(explicit grep for "pixel"/"resolution"/"128x"/"256x"/"OLED" - no figure in
+the manual text). LEDs are only ever described as "lit"/"dimly lit"/"unlit",
+never a color vocabulary anywhere in the manual. For external context only
+(not from the manual, not primary-sourced for this investigation):
+Sequential's own marketing copy, mirrored on multiple retailer pages,
+describes a "256 x 64 dot OLED display."
+
+**The premise behind this search turned out to be wrong, and that's the
+real finding.** Re-downloaded Panel's firmware fresh and confirmed the same
+65,577-byte decode as every prior session. But: **69.3% of the entire file
+is the literal byte `0xFF`** - erased-flash padding, not meaningful data.
+Splitting the file at the sharp density cliff already noted in §5.6
+(dense/code-like `0x0`-`0x4800`, ~18.4KB; collapsed density from `0x4800`
+to EOF): the tail region (72% of the file) is **95.6% `0xFF`**, while the
+front code region is only 2.0% `0xFF`. The "79% of the file is data"
+framing that motivated this search was itself misleading - almost all of
+that "data" is blank padding, not embedded tables.
+
+**Exhaustive checks, all negative:**
+
+- Longest contiguous non-`0xFF` run anywhere in the padding tail: only 302
+  bytes - nowhere near enough for even a 1-bit-per-pixel 256x64 bitmap
+  (needs 2048 bytes), let alone a font set at that resolution.
+- No identity sequences (`0..15`, `0..31`), bitmask tables
+  (`{1,2,4,...,128}`, either direction), or constant-offset monotonic
+  16-byte runs (every offset 0-255 tried) anywhere in the file.
+- Byte-level autocorrelation at every manual-derived control count (2, 4,
+  16, 32, 64, 90, 128, 180, 256), restricted to the code-only region to
+  exclude the trivial padding autocorrelation: no standout peak at any lag,
+  smooth decay indistinguishable from ordinary code.
+- Immediate-constant loads (`addiu`/`ori`/`li`/`slti`/`sltiu`/`andi`) of the
+  exact manual-derived counts (2, 4, 16, 32, 90) in the code region: 0-9
+  hits each against 464 total such instructions - `90` got zero hits at
+  all - noise-level for integers this structurally common, not a signal.
+
+**Conclusion: a clean, thorough negative, not an under-search.** No data
+region in Panel's firmware shows size, structure, or periodicity matching
+any physical-panel count from the manual. If pad-scan/LED-driver logic
+exists in this file at all, it's most likely *code* within the dense 18KB
+region, not a static table - and reading that code meaningfully still
+needs the base-address problem (§5) solved first. Equally possible: this
+kind of data simply isn't included in the field-updatable `.syx` OS image
+at all, the same explanation already used elsewhere in this doc (§5.5) for
+the missing USB descriptor and the missing full vector table.
+
+**Not fully characterized, low priority**: a handful of small (<302-byte)
+non-`0xFF` islands scattered through the padding tail - not bitmap/font
+shaped, not ruled out as containing something minor like a calibration
+constant, not pursued further given their size.
