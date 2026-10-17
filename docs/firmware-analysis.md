@@ -886,12 +886,41 @@ at 75-81% across three window sizes versus the same ~21.2% file-wide
 baseline - equally credible as real code as `0x374c`, and in fact the same
 ~0x3600-0x3900 contiguous block: a full linear disassembly of that range
 reads as one coherent function computing both `0x1D004740` and
-`0x1D004641`, and - a new detail - also doing `lui $t3,0x9d00` at file
-offset `0x37d0`, a `0x9D00xxxx` **virtual** KSEG0 load in the very same
-function that computes the two physical addresses. One function apparently
-referencing both the physical and virtual forms of the Program Flash range
-is a real, specific detail worth tracing further if this thread continues,
-not yet interpreted beyond that.
+`0x1D004641`, and also appeared to do `lui $t3,0x9d00` at file offset
+`0x37d0`, a `0x9D00xxxx` virtual KSEG0 load nearby.
+
+**Correction (2026-10-17, follow-up trace): the `0x37d0` "virtual address"
+reference does not hold up, and the two physical-address sites are not
+part of a conventional function at all.** A full trace found: (1) `$t7`
+(the register holding `0x1D004740`) is confirmed dead - redefined to an
+unrelated value just 2 instructions later, never actually reused; (2) the
+`0x37d0` `lui $t3,0x9d00` is never consumed by any later `addiu`/`ori`
+within 60 instructions, unlike the two physical-address pairs which pair
+cleanly within a few instructions - it fails the exact test that validated
+the other two; (3) a few words past `0x37d0`, decode hits `swc1`/`lwc1`
+(FPU) and `jalx`/`bz.h` (MSA vector) instructions - impossible on the
+confirmed FPU-less M4K core, concrete evidence the stream has broken down
+into non-code noise right around there; (4) roughly half of all decoded
+branches in this `0x3660`-`0x3900` region target file offsets outside
+Panel's own 65,577-byte file entirely - a base-address-independent test
+that doesn't require knowing the chip at all. **Most likely the `0x37d0`
+site is a coincidental decode of non-code bytes, not a third real
+reference alongside the two physical-address computations.**
+
+A whole-file census makes this more than a local anomaly: Panel has only
+**7 standard MIPS function prologues** (`addiu $sp,$sp,-N`) in its entire
+65,577 bytes, all clustered in the first 1,020 bytes, and **zero**
+instances of `jr $ra` (ordinary function return) anywhere in the whole
+file. No conventional compiler-generated function with a frame and a
+return exists anywhere past roughly file offset `0x1a00` - the two
+physical-address computations are real code, but not part of a boundable
+"function" in the usual sense. A file-wide search for any `jal` targeting
+this fragment also found no caller. One numerically striking side-signal
+(14/130 `jal`-shaped decodes landing in-bounds under a shared-low-28-bits
+base, ~440x above chance) was checked and traced to the same
+chip-impossible-instruction neighborhoods as above - treated as the same
+kind of false positive already identified elsewhere in this doc, not a
+new signal.
 
 **Also done this session: an exhaustive search for a `$gp`-relative or
 PC-relative jump table in Main, specifically to extend the two
