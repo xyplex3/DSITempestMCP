@@ -1648,3 +1648,41 @@ or Panel by any method in this document - not a new base-address guess
 disassembly attempt should point once a real base address is available
 (from ICSP or otherwise), since it's already shown to be internally
 self-consistent independent of any addressing assumption.
+
+---
+
+## 16. Panel's small data islands checked against §13's bitmap candidates - clean negative, closing out that specific question (2026-10-17)
+
+§13's concrete next step, done: checked every non-`0xFF` island in Panel's
+padding tail (23 islands ≥4 bytes, re-enumerated fresh and reproducing
+§10's "longest 302 bytes" figure exactly) against the candidate bitmap
+byte sizes. **No island exactly matches any candidate size.** The two
+closest near-matches (268 vs. 260 for a 256x8 1bpp strip; 142 vs. 132 for
+a 32x32 1bpp icon) both fail decisively on content: entropy 4.45-5.07
+bits/byte (far higher than real packed-pixel data would show), rendered
+as literal 1bpp pixel grids they produce pure unstructured static with no
+edges or shapes, and neither is preceded by the confirmed 28-byte
+`GFX_RESOURCE_HDR` descriptor pattern. A handful of small islands (8-64
+bytes) exactly match *some* candidate size, but each such size
+simultaneously satisfies several unrelated width/height/bpp combinations
+at once - a demonstrated coincidence, not a signal - and their actual
+content looks like zero-fill or stray MIPS instruction fragments (e.g. the
+exact 64-byte match is a single repeated `0x00` run; several tiny ones
+show classic `lui`-pattern opcode bytes), not image data either way.
+
+**Correction to §13's own wording**: that section implied a fuller table
+of candidate sizes than it actually states - only 36/132/160/260 bytes are
+named there; 516/544/768/1056 were derived independently during this
+check from §13's own confirmed packing formulas (internally consistent,
+doesn't change the negative verdict, but worth being precise about what
+was and wasn't literally written down).
+
+**Verdict**: closes out the specific "do any of Panel's known small
+islands hold a bitmap" question with a concrete negative, not just "not
+fully characterized" as §10 originally left it. The 302-byte island and a
+few code-fragment-shaped tiny islands remain genuinely unexplained as
+*something* - just confirmed not to be bitmaps. Doesn't touch the
+base-address problem (§5/§7/§11) at all - purely a UI-asset-storage
+question. Main's firmware (524,609 bytes) hasn't been checked against this
+same bitmap-candidate method at all yet - the natural next step if this
+specific thread continues.
