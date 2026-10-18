@@ -4504,3 +4504,60 @@ Program Flash at all; as this project consistently concludes for this
 class of question, direct ICSP hardware access remains the most
 reliable way to settle this, now with substantially more computational
 search exhausted without resolving it.
+
+---
+
+## 49. Voice cleanly eliminated as a candidate for the 80 missing parameter values - and not just a negative, a stronger fact than expected (2026-10-18)
+
+Direct follow-up closing §48's "real gap" - checking Voice's firmware
+for the 80 OS 1.3 "MIDI Note:"-type parameter values, since six
+exhaustive tests already found no trace of them anywhere in Main.
+
+**The real finding is stronger than a simple negative: Voice was not
+touched at all, not by a single byte, at the exact version boundary
+where this feature was introduced.** Directly re-measured (not assumed
+from §28's aggregate claim) for the specific pair that matters: Voice's
+raw `.syx` file inside the Main 1.3.0 release bundle is literally named
+`Tempest_Voice_1.2.0.syx` - the same version as the 1.2.0.8-era bundle -
+and is confirmed SHA-256-identical, both as the raw wire file (74,951
+bytes) and the decoded image (65,577 bytes), to the Voice file from the
+Main-1.2.0.8-era bundle. **This independently and specifically
+reproduces §28's broader claim for exactly the one version pair this
+question depends on**, rather than inheriting it secondhand.
+
+**The requested test battery was run anyway (since testing an unchanged
+image once covers both versions), calibrated against Main's known table
+first - four independent, clean negatives.** A literal ordered search
+for the 16 Bank-A GM-note values at every stride 1-32 (calibration
+correctly finds the 1 known hit in Main; Voice: 0 hits); an order-
+independent multiset search for the same 16 values (same calibration,
+same Voice result: 0); a ramp-pattern search for `0,1,...,15` (Main
+calibration finds the 2 known structures; Voice: 0); and the exact
+6-byte zero-tail record format search (Main calibration finds exactly
+the 2 known runs; Voice: only trivial all-zero filler, zero non-trivial
+runs). A broader, fully generic tag-agnostic structural scan surfaced
+exactly one non-trivial candidate (stride 3, offset `0x22a2`) - directly
+inspected and ruled out as an unrelated offset/index table (one value
+breaks the plausible-note range entirely, and it already fails the
+other three more specific tests), not overclaimed as a match.
+
+**Why the "Voice wasn't touched at all" fact matters more than the
+individual test negatives**: it doesn't just rule out "the note table
+moved to Voice in a new encoding" - it simultaneously rules out "Voice
+already held this data before 1.3.0 and Main just started exposing it
+as editable" and "Voice's existing structures were extended in place
+without changing the image's size," since any of those would require
+some byte-level change in Voice at this exact boundary, and there is
+none whatsoever.
+
+**Where this leaves things**: Voice is cleanly eliminated as a candidate
+for the missing parameter values - a real, well-tested negative that
+closes §48's explicitly-flagged gap. The remaining untested hypotheses
+narrow further: §44's own suggested "Main's existing System-parameter
+area grew in place" approach (a length/boundary shift rather than an
+erased-flash transition - the one class of Main-internal reuse not yet
+explicitly ruled out) is now the most promising remaining computational
+lead; a separate Factory Projects/Sounds bundle remains completely
+unexplored; and, as this project consistently concludes for this class
+of question, direct ICSP hardware access remains the most reliable path
+to settle this outright, now with Voice itself cleanly eliminated.
