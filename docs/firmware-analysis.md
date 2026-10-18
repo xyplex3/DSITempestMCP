@@ -1940,3 +1940,79 @@ exactly, would be strong corroboration); check whether this content moved
 to a new offset by 1.3.0 or was genuinely deleted; check Voice's firmware
 for the same version pairs, since preset/sound data plausibly lives there
 rather than in Main.
+
+---
+
+## 20. The preset block's internal structure: a clean 42-entry name table, a third string-storage convention, and a necessary correction to the Sound Bank B hypothesis (2026-10-17)
+
+Follow-up to §19, parsing the 29,713-byte 1.2.0.8-only block's internal
+layout to test whether it holds a record count matching "16," which would
+corroborate the Sound Bank B guess structurally.
+
+**Found a genuine, unambiguous 42-entry name table - a previously
+undocumented third string-storage convention.** At absolute file offset
+`0x6e327`-`0x6e50b`: 42 consecutive null-terminated ASCII strings, each
+padded with extra `0x00` bytes so every entry's total length is a
+multiple of 4 - confirmed computationally (every entry's start offset
+`≡ 3 mod 4`, holding without exception across all 42 entries, breaking
+cleanly at entry 43). Entry 0 is `"Osc Off"` (a UI label, not a preset);
+entries 1-41 are real, distinct preset names: `White Noise`, `Pink
+Noise`, `Resonant 4K Noise`, `Cicada`, `Chain Link`, `Mid Kick`, `Slap
+Kick`, `Boom Kick`, `SCI Tom Cart Kick`, `LM-1 Bass Drum`, `LinnDrum
+Bass`, `909ish`, `808ish`, `Long Time 808`, and 27 more. **This encoding
+matches neither existing SysEx wire-protocol string convention in this
+codebase** - not the Beat/Kit 20-char space-padded field
+(`KitNameOffset`/`KitNameLen`), not the RAM Sound 7-bit-packed field
+(`SoundNameBitOffset`) - it's a third, simpler, firmware-internal-only
+convention: variable-length null-terminated strings, 4-byte-aligned,
+packed back-to-back. Genuinely new structural information, independent of
+anything else in this document.
+
+Two entries (`Resonant K`, `Electron K`) are truncated mid-word
+(presumably cut from "...Kick") yet still obey the same 4-byte-padding
+rule - a real, reproducible oddity in the ROM data itself, unexplained.
+Immediately after entry 41, the clean pattern breaks completely; several
+hypotheses for what follows (nested 7+1 re-packing, simple high-bit
+stripping) were tried and ruled out. Most likely explanation, not fully
+confirmed: subsequent records are `name + binary parameter bytes`, with
+the parameter bytes only coincidentally decoding to quasi-readable
+fragments - not a corrupted-text artifact.
+
+**The literal count test: definitively negative, not ambiguous.** 41 real
+preset names (42 with "Osc Off") is not 16, and not a clean multiple of
+16 either - a clean, unambiguous result, not a decode uncertainty.
+
+**An important correction to the premise itself, pulled from the real
+addendum wording** (`Tempest_addendum_1.2.pdf`, page 3): *"Sound Bank B:
+Sixteen additional Sounds can now be stored and accessed per Beat for a
+total of 32."* **This is a per-Beat slot-capacity increase (16 new
+editable slots per Beat, doubling 16→32), not a claim of exactly 16 new
+globally-unique factory preset names.** "16 new default sounds" (this
+project's own working shorthand) was a simplification. Sequential
+plausibly needed new default content across multiple factory Beats ×16
+new slots each, which would naturally produce far more than 16 total
+names. **Finding 41+ names doesn't contradict Sound Bank B under its real
+wording - but it doesn't confirm it either.** The specific, falsifiable
+"count ≈ 16" test comes back cleanly negative; the looser "this block is
+plausibly Sound-Bank-B-related somehow" story remains open, neither
+confirmed nor ruled out.
+
+**Other legible content found nearby, not yet characterized**: a short
+parameter-label cluster (`Pan and Volume`, `Lowpass Filter`, `Waveshape
+Osc 1/2`, immediately followed by the already-known `**** Calibrating
+Done; Restart ****` string) at `0x70120`-`0x70160`; a folder/category
+cluster (`Kicks`, `Factory`, `Beats`, `Sounds`, plus `Beat`/`Project`
+numeric fragments) around `0x70be5`-`0x70d1c`, likely filesystem/directory
+strings rather than sound presets.
+
+**Where this leaves things**: the preset-table structure itself is now
+real, documented, structural knowledge - not just "there's readable text
+in here somewhere." The Sound-Bank-B connection is weakened as a precise
+hypothesis (count doesn't match) but not ruled out as a general one (the
+addendum's real wording doesn't predict a specific count anyway). If this
+thread continues, the productive next question isn't "does the count
+equal 16" (resolved) - it's decoding the post-table binary parameter
+layout, ideally cross-referenced against the confirmed 121-entry
+`SoundParams` table (`internal/sysex/soundparams.go`) already used for
+the wire-protocol Sound (0x60) format, to see if the same parameter
+encoding appears here too.
