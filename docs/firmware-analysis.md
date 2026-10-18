@@ -3666,3 +3666,92 @@ into a conclusion tested across the whole known corpus. The structure's
 actual identity/purpose remains exactly as open as §27 left it - no
 further concrete next step identified for the cross-sighting-content
 question specifically; it now looks closed.
+
+---
+
+## 40. The small-integer table identified: a 16-pad default MIDI-note map, matched against General MIDI percussion with p≈6×10⁻⁹ (2026-10-18)
+
+Direct follow-up characterizing the small-integer table noted only in
+passing by §32/§35 (described there as "mostly `0x00` with scattered
+small values ... reads like real config/calibration values"). This
+session did the real byte-level work the earlier mentions skipped - and
+found a genuine, statistically well-supported positive identification,
+not just more characterization.
+
+**Precise record format, confirmed with zero exceptions**: a clean
+6-byte record at byte-phase `0x70194` - `[u16 LE field-A][u8
+field-B][0x00 0x00 0x00]`, every single record's last 3 bytes exactly
+`00 00 00` across the whole table, a hard structural fact. **Precise
+boundaries, correcting the earlier approximate range**: the table runs
+exactly `0x70194`-`0x705b4` (176 records x 6 bytes = 1056 bytes exactly),
+bracketed on both sides by the already-known `0x1D`/`0x9D`/`0x06`/`0x86`
+fingerprint vocabulary (§27/§32) - a genuinely bounded island, not a
+vaguely-delimited region. Masked-ASCII sanity check (requested per this
+project's standard before trusting a purely-numeric reading): longest
+printable run is 1 character - confirms this is purely numeric, not
+disguised text.
+
+**The significant new finding: 16 consecutive values in one tagged run
+are not arbitrary small integers - they're a complete, pairwise-distinct
+subset of the General MIDI percussion key map (notes 35-81).** Segmenting
+the 176 records by their field-A "tag" value into 33 contiguous runs, one
+32-record run (tag=`0x7f`=127, at `0x702ba`-`0x70379`) splits into two
+16-value halves: the first 16 (`69,54,40,38,46,50,47,43,77,39,37,36,
+42,51,49,55`) decode against the published GM percussion table to
+`Cabasa, Tambourine, Electric Snare, Acoustic Snare, Open Hi-Hat, High
+Tom, Low-Mid Tom, High Floor Tom, Low Wood Block, Hand Clap, Side Stick,
+Bass Drum 1, Closed Hi-Hat, Ride Cymbal 1, Crash Cymbal 1, Splash
+Cymbal` - covering exactly the category spread already confirmed in the
+adjacent folder cluster (`Kicks`, `Snare`, `HiHats`, `Toms`, `Cymbals`,
+`Percussion`, §25/§29). **Checked against chance, per this project's own
+standard**: across all 176 records, only 18 of the 176 "value" bytes
+fall in the GM range 35-81 at all, and 16 of those 18 are exactly this
+one contiguous run. Under an i.i.d. uniform[0,127] null model, the
+probability of 16 consecutive values all landing in this 47-wide band
+and being pairwise distinct is **≈6x10⁻⁹** - not remotely plausible as
+coincidence.
+
+**Best-supported reading, stated as interpretation rather than certainty:
+this is the firmware's default/factory MIDI-note assignment for the 16
+physical pads.** The second 16-value half of the same run is constant
+`127` (the same value as the tag itself, i.e. the record's own "max"
+sentinel) - plausibly the default note-mapping for OS 1.2's newly-
+introduced Sound Bank B 16 slots, left intentionally unpopulated (§20
+already confirms Bank B added exactly 16 new sound slots per Beat in
+this exact release). Independent corroborating structure: the preceding
+tag=`0x10`(16) run is a clean double enumeration `0,1,...,15,
+0,1,...,15` (34 records total, 2 unexplained outlier `10` values
+preceding it) - a parallel 16-doubled-to-32 pattern, plausibly a pad/
+slot-index array used alongside the note table, though its specific
+semantic role isn't independently confirmed.
+
+**A correction worth noting for anyone revisiting the adjacent text
+cluster**: the Tempest has **6 analog voices, not 16** (confirmed via
+multiple independent spec sources) - so the "16" here structurally
+matches the pad count (16 pads, 2x8 layout, §10) and the 32-sound-slot
+Bank A/B split (§20), not a naive "16 voices" misreading someone might
+draw from the adjacent "Calibrating Voice" text label.
+
+**Other internal structure found, not individually resolved**: the
+remaining ~20 short scalar runs follow a general `(max, value)` record
+convention, with several instances of value = exactly half of max (three
+separate cases, e.g. tag=`0x18`(24)→12, tag=`0x64`(100)→50, tag=`0x78`
+(120)→60 - plausibly "centered/midpoint default" UI values, a plausible
+fit for the adjacent "Pan and Volume"/"Lowpass Filter" text labels, not
+confirmed individually). A tag=`0x7f` pair summing to exactly 127
+(`2,125`, appearing twice) is suggestive of a separate min/max-bound
+record. A 64-record all-zero block (`0x70434`-`0x705b3`) sits at the
+table's tail, purpose uncharacterized.
+
+**Where this leaves things**: a genuine positive identification, on the
+same evidentiary tier as §29's manual-name cross-reference - upgrades
+"reads like config/calibration values" to a specific, statistically-
+supported, externally-validated structure (a default pad-to-MIDI-note
+map). Concrete next steps if continued: diff this exact byte range
+against Main 1.1.3 (pre-Bank-B) and 1.5.0.2, to test directly whether the
+second, currently-sentinel-valued 16-note half ever becomes real note
+assignments in a later release (which would confirm the Bank-B-slot
+interpretation specifically); identify the individual semantics of the
+remaining ~20 short scalar runs, several of which plausibly correspond
+to specific UI parameter defaults given their position next to the
+`Pan and Volume`/`Lowpass Filter`/`Waveshape Osc 1/2` text labels.
