@@ -4412,3 +4412,95 @@ estimates to byte-precision the way §46 did for 1.5.0.2; run the
 decisive statistical test on the relocated preset block in each
 intermediate version to confirm it rather than relying on string-match
 alone.
+
+---
+
+## 48. The OS 1.3 parameter pool is 80 labels, not 32 - found and confirmed new to 1.3.0, but the value storage remains exhaustively absent (2026-10-18)
+
+Direct follow-up to §44, attempting to locate Tempest's existing System-
+parameter storage area and test whether it grew by ~32 records between
+1.2.0.8 and 1.3.0 - the approach §44 itself suggested after confirming
+the erased-flash-boundary diff technique has a structural blind spot
+for this exact question.
+
+**The old table and its envelope neighbor are confirmed gone under
+every byte-level reuse hypothesis, not just the ones already tested.**
+Six independent, well-calibrated tests against the full 1.3.0 image (each
+first verified to correctly find the known structure in 1.2.0.8): the
+exact offset (UI strings, not the table - reproduces §42); a literal
+search for the exact Master Transpose/Fine Tune byte sequences anywhere
+in the file (zero hits); the 16 Bank-A note values at every stride 1-16
+(zero hits, extending §44's stride-1-32 test with fresh code); an
+order-independent search for the same 16 values as an unordered multiset
+at multiple strides (zero hits - closes off "same values, just
+reordered" as a reuse hypothesis, never tested before); the distinctive
+`0,1,...,15` ramp pattern at every stride (zero hits, while the same
+code correctly finds it in 1.2.0.8); and §43's envelope/ramp table,
+independently reconfirmed absent at its exact offset (replaced by
+Play-List UI text, matching §43's own citation). **The old table isn't
+merely restructured in some as-yet-unfound way - it's gone at every
+level this project's tooling can test**, closing off several specific
+reuse hypotheses §44 hadn't explicitly ruled out.
+
+**A genuine new discovery: the OS 1.3 parameter *labels* (not their
+values) were located directly in 1.3.0's own UI-text zone, confirmed
+present in the very first 1.3.0 point release and confirmed absent in
+1.2.0.8 - and the pool is substantially larger than the addendum's
+headline number.** Found, inside the same general UI-text content class
+§45 characterized (but never previously examined in 1.3.0 specifically):
+`"Master Transpose"`, `"Fine Tune"`, `"Click Level"` as named text labels
+for the first time (previously only numeric records in the old table);
+`"MIDI Note: Pad A1"` through `"Pad A16"`/`"Pad B1"`-`"Pad B16"` (32
+labels, exactly matching the addendum's documented wording already
+quoted in §42); immediately followed by a parallel, previously-uncounted
+`"MIDI Note: Mute A1"`-`"Mute A16"`/`"Mute B1"`-`"Mute B16"` run (32 more
+labels); then a third parallel run `"MIDI Note: Beat 1"`-`"Beat 16"` (16
+more labels). **80 "MIDI Note:"-prefixed labeled items total, not the
+addendum's documented 32** - the Mute and Beat label sets were never
+mentioned in the addendum text quoted so far. Surrounding text matches
+the addendum's "System Screen Reorganized by Category" feature closely:
+category labels (`"BPM/Swing"`, `"UI Preferences"`, `"System Actions"`,
+`"MIDI Remote Pad Play"`, etc.) plus the full Sound/Beat/Project/
+Playlist/File-management menu vocabulary already partially catalogued
+in §46.
+
+**Checked this entire new vocabulary against 1.2.0.8 directly - a clean,
+broad negative, not just "the GM-note table vanished."** Every one of
+these specific phrases (`"Master Trans"`, `"MIDI Note: Pad A1"`, `"Mute
+A1"`, `"MIDI Note: Beat"`, `"Tap Tempo"`, `"Calibrate Analog"`, `"System
+Actions"`, etc.) was searched for in both encodings, everywhere in
+1.2.0.8: zero hits for every single one. The entire named-parameter/
+menu-category text vocabulary is new starting at the 1.2.0.8→1.3.0
+transition - this pins the label side of the OS 1.3 reorg specifically
+to the 1.3.0 release itself, not just "sometime before 1.5.0.2" as §45
+left it, and reveals the real feature scope (80 labeled parameters) is
+more than double the addendum's "32 new parameters" headline.
+
+**The task's primary goal - locating where these 80 parameters'
+VALUES are actually stored - was not achieved, despite now 6
+independent, well-calibrated negative tests.** This remains consistent
+with §44's own standing conclusion that version-diff/pattern-search
+heuristics may not be the right tool for this specific question, not
+yet ruled in or out: defaults computed at runtime rather than stored
+statically; storage in Voice's firmware rather than Main (untested this
+session - a real gap, given §19's own suggestion that sound/preset-
+adjacent data plausibly lives in Voice); storage in a separate Factory
+Projects/Sounds bundle rather than in Main's Program Flash at all (a
+model not previously considered in this document); or a different value
+representation entirely (indices rather than raw note numbers, packed
+bits for the 32 Mute booleans).
+
+**Where this leaves things**: a genuine, confirmed-new discovery about
+the real scope of the OS 1.3 feature (80 labeled parameters, not 32),
+pinned to the exact release where it first appears - alongside the
+strongest and most exhaustive negative yet on where the corresponding
+values live. Concrete next steps if continued: run the project's
+`decode_preset_text.py`-style fuzzy matcher against this newly-pinned
+1.3.0 zone to get byte-exact label-pool boundaries, the way §46 did for
+1.5.0.2's zone; check Voice's firmware for a newly-appeared ~64-80-length
+small-integer table (untried, a real gap); check whether these defaults
+live in a separate Factory Projects/Sounds bundle rather than Main's
+Program Flash at all; as this project consistently concludes for this
+class of question, direct ICSP hardware access remains the most
+reliable way to settle this, now with substantially more computational
+search exhausted without resolving it.
