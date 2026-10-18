@@ -1753,3 +1753,56 @@ field-updatable images, on a display module with its own onboard
 controller/memory - consistent with this doc's recurring pattern (crt0,
 USB descriptor, and exception vectors are all similarly absent from these
 same images).
+
+---
+
+## 18. Cross-version shift search: a well-controlled negative, plus a striking new structural invariant (2026-10-17)
+
+A more targeted base-address test than anything tried before: instead of
+testing one firmware build in isolation, require the *same* shift value to
+validate the known jump table across all 6 independently-built versions
+(§14) simultaneously.
+
+**The shift search itself: clean, noise-baseline-controlled negative,
+closing out this specific angle.** Tested every integer shift in
+`±8192` bytes (byte granularity, 16,385 values) against all 6 versions at
+once. **Zero shifts make all 6 versions simultaneously valid - the best
+any single shift achieved was 3 of 6**, and that one case reproduces the
+same smoothly-varying sliding-window-over-structured-data signature
+already identified and dismissed elsewhere in this doc, not a real
+signal. A single near-hit (version 1.1.3 alone, 45/45 "valid" around
+shift -8192) was inspected directly and is the same kind of coincidence -
+smoothly ascending values matching embedded preset data, not real
+pointers, and no other version lands anywhere near that shift. **Checked
+against a proper noise baseline** (1,963 random shifts outside the
+window): 0% of random trials did any better than the in-window best -
+the `±8192` window is statistically indistinguishable from random shifts
+by this test. This is a stronger negative than §5.6/§14 individually,
+since it's now been checked jointly with a matching control, not just
+serially per-build.
+
+**A separate, genuinely new positive finding: §15's 256KB high-confidence
+code region sits at the same absolute file offset in every one of the 6
+independently-built versions, spanning 6 years.** Re-ran §15's
+base-address-independent branch-target-in-bounds test on all 6 versions
+(first reproducing 1.5.0.2's own 92.3%-vs-92.49% figure as a sanity check -
+close enough to confirm method equivalence). The ~256KB, ~100%-in-bounds
+region sits at file offset `0x20000`-`0x60000` in **five of the six**
+versions (1.2.0.8 through 1.5.0.2) and `0x20000`-`0x62000` in the oldest
+(1.1.3, Dec 2011) - essentially frozen boundaries across 6 years of
+active development, even while the known jump table *within/near* that
+region drifts substantially (from file offset `0x5E3B4` in 1.1.3, inside
+the region, out to `0x6B860` in 1.5.0.2, past the region's end - a ~54KB
+drift consistent with 6 years of code growth). **The region's own boundary
+not moving, while everything around and after it clearly grows, is itself
+a notable structural fact** - speculative interpretation (not confirmed
+against any symbol table or map file): file offset `0x20000` (128KB)
+plausibly corresponds to a fixed linker-script/section boundary rather
+than "wherever growing code happens to land."
+
+**Where this leaves things**: the small-shift cross-version angle is now
+well-tested and closed, not just abandoned. The region-invariance finding
+is new, reproducible, and worth investigating further if this thread
+continues (e.g. checking whether `0x20000` coincides with anything else
+structurally fixed) - but doesn't resolve the base address itself. The
+ICSP hardware test (§7 item 5) remains the one path that does.
