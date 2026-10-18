@@ -3602,3 +3602,67 @@ none correlate even pairwise, that would be a stronger, broader
 confirmation that this is a recurring *build-tool artifact pattern*
 rather than any single meaningful data table, worth stating explicitly
 either way.
+
+---
+
+## 39. All 6 pairwise content checks across the 4 known periodic-structure sightings: a rigorous, fully-tested negative (2026-10-18)
+
+Direct follow-up to §38's suggested next step - checking all 6 possible
+pairs among the 4 known sightings of the unidentified 28-byte structure
+(Main 1.2.0.8 `0x6f790`-`0x70060`; Main 1.5.0.2 `0x79054`-`0x7977c`;
+Main 1.4 `0x7676a`-`0x76950`; Main 1.3.0 `0x77373`-`0x7755e`) for shared
+literal content, not just the same structural signature. §38 had only
+checked one pair (sightings 3 vs. 4); this closes out all 6.
+
+**Five independent methods, each converging on the same negative.**
+Direct aligned comparison gives 0.00%-7.82% raw match across the 6
+pairs - but the one pair that looked elevated (1v3, 7.82% vs. a 5000-
+trial shuffled-control mean of 3.59%/max 6.79%) was traced column-by-
+column and found to be **entirely explained by the already-known
+`0x06`/`0x86`/`0x1D`/`0x9D` fingerprint bytes recurring** (expected,
+since both sightings are independently confirmed members of the same
+structural class) - excluding those four values collapses it to 0.46%,
+and doing the same for all 6 pairs collapses everything to 0.00%-1.07%,
+flat chance for a 256-symbol alphabet. A best-alignment search (requiring
+80%+ overlap, to avoid the degenerate-tiny-window false-positive shape
+already catalogued in §21/§22) was run against a **structure-aware
+row-block-shuffle control** - the fairest baseline here, since a naive
+full-byte shuffle would be misleading (any two instances of this highly
+periodic structural class match each other more than true random bytes
+would, independent of real shared content). The one pair that showed
+nominal significance (1v2, 5.24% vs. control max 4.80%) was traced
+directly and found to be more fingerprint bytes plus incidental shared
+`0x00` padding where both zones happen to decay into blank flash near
+their own boundary - excluding fingerprint bytes and `0x00`/`0x80` drops
+it to 0.22%, below chance. A verbatim-substring search (does any 28-,
+16-, 12-, or 8-byte window from one sighting appear anywhere in another)
+found **zero matches at every window length, for all 6 pairs** - only
+chance-sized 3-6-byte coincidences, confirming the method works rather
+than being silently broken. A single-byte XOR-relationship test against
+all 256 constants found nothing beating plain identity for 4 of 6 pairs,
+and only multiple-comparison-artifact-sized "improvements" for the other
+2. Record-count/size checks found none of the 4 zones is an exact
+multiple of the 28-byte period, and the ~11-12-identical-row feature
+found in sightings 3/4 doesn't match any confirmed Tempest count checked
+(121 `SoundParams` fields, 42 preset names, 454 factory samples, or any
+obvious UI count).
+
+**Also directly checked sighting 1's "non-counter" columns against
+sightings 3/4's repeated rows** (testing whether a shared default/
+constant payload template exists, distinct from whatever varies) - no
+column in sighting 1 is genuinely constant beyond the already-explained
+fingerprint columns (`{0x1D,0x9D}` and `{0x06,0x86}`, the deterministic
+high-bit-toggle pairing §27 already accounted for) - there's no stable
+template to compare, and the substring search already confirms none of
+sighting 1's rows appear in 3 or 4 regardless.
+
+**Where this leaves things**: a rigorous, multi-method, fully-tested
+negative across every possible pair - the strongest version of §38's
+"same structural signature, different payload every time" conclusion,
+now demonstrated for all 6 pairs with real numbers rather than assumed
+from the 1 pair previously checked. This strengthens §38's "recurring
+build-tool artifact pattern, not a meaningful data table" interpretation
+into a conclusion tested across the whole known corpus. The structure's
+actual identity/purpose remains exactly as open as §27 left it - no
+further concrete next step identified for the cross-sighting-content
+question specifically; it now looks closed.
