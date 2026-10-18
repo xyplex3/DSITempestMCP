@@ -3695,7 +3695,7 @@ disguised text.
 are not arbitrary small integers - they're a complete, pairwise-distinct
 subset of the General MIDI percussion key map (notes 35-81).** Segmenting
 the 176 records by their field-A "tag" value into 33 contiguous runs, one
-32-record run (tag=`0x7f`=127, at `0x702ba`-`0x70379`) splits into two
+32-record run (tag=`0x7f`=127, at `0x702ba`-`0x7037a`) splits into two
 16-value halves: the first 16 (`69,54,40,38,46,50,47,43,77,39,37,36,
 42,51,49,55`) decode against the published GM percussion table to
 `Cabasa, Tambourine, Electric Snare, Acoustic Snare, Open Hi-Hat, High
@@ -3755,3 +3755,84 @@ interpretation specifically); identify the individual semantics of the
 remaining ~20 short scalar runs, several of which plausibly correspond
 to specific UI parameter defaults given their position next to the
 `Pan and Volume`/`Lowpass Filter`/`Waveshape Osc 1/2` text labels.
+
+---
+
+## 41. Testing the pad-note map across versions: confirmed absent pre-Bank-B, genuinely absent (not just moved) 5 years later - a more interesting negative than expected (2026-10-18)
+
+Direct follow-up to §40, testing the Bank-B-slot interpretation against
+Main 1.1.3 (pre-Bank-B, Dec 2011) and Main 1.5.0.2 (5+ years after,
+Aug 2017). Calibrated every search method against 1.2.0.8 first,
+reproducing §40 exactly (confirms the table and the tag=`0x7f` run,
+same values, same structure) before trusting any negative on the other
+two versions. **Minor correction to §40's prose**: the tag=`0x7f` run's
+real end offset is `0x7037a`, not `0x70379` (32 x 6 = 192 = `0xC0`
+bytes from `0x702ba`) - trivial, but worth fixing for exact-offset
+correctness.
+
+**1.1.3: the clean half of the prediction, directly confirmed.** The
+exact byte range `0x70194`-`0x705b4` is 99.5% literal `0xFF` in 1.1.3 -
+not a record table at all, just unprogrammed flash. This reproduces
+§19's finding on the containing 29,713-byte block directly (99.87%
+`0xFF` there too) rather than citing it. An exhaustive whole-file search,
+not just the exact offset, using four independent methods including a
+fully tag-agnostic structural test (any 6-byte-record run with a
+constant tag, zero tail, pairwise-distinct GM-range values, not tied to
+1.2.0.8's specific note numbers at all) - finds **zero** instances of
+this table structure anywhere in 1.1.3's 524,609-byte image. Confirmed:
+in 1.1.3, this table simply did not exist yet.
+
+**1.5.0.2: a real negative, but a more interesting one than "the
+sentinel stayed `127`."** The exact byte range is not erased flash here
+(unlike 1.1.3) - it's dense content, just not this table (the first few
+"records" decode to implausible values, ordinary relinked content
+sitting at a coincidental offset). The same four calibrated whole-file
+search methods - each independently verified to find the real table
+exactly once, with zero false positives, when run against 1.2.0.8 in the
+same session - find **zero matches anywhere** in 1.5.0.2's 524,609-byte
+image, including under the generic tag-agnostic test that doesn't
+require matching 1.2.0.8's specific values at all. **This is a real
+absence of the byte-level structure, not a search-tooling blind spot.**
+
+**But the surrounding functional neighborhood clearly survives, shifted
+by a constant, independently-confirmed offset.** `909ish` and `808ish`
+preset names, and the `Kicks`/`Beats` folder-cluster strings, all appear
+in 1.5.0.2 shifted by exactly **+0x6ab9 (27,321 bytes)** from their
+1.2.0.8 locations - confirmed identical for two independent strings, not
+a coincidence. Extrapolating that same shift to the table's own location
+(`0x70194 + 0x6ab9 = 0x76c4d`) and masking the bytes there recovers the
+*same* text cluster §20 already found immediately preceding the table in
+1.2.0.8 - `"**** Calibrating Done; Restart ****"` / `Lowpass Filter` /
+`Pan and Volume` / `Waveshape Osc`, in corrupted form consistent with
+this project's own already-known text-deletion mechanism (§31/§33) -
+confirming this really is the same functional neighborhood, not an
+artifact of the shift arithmetic.
+
+**Immediately after that text, right where the table "should" sit by
+positional analogy, the bytes don't parse as the known 6-byte record
+format under any phase or stride tried.** A repeating-gap pattern
+between `0x7f` bytes there (gaps `12,4,4,8`, summing to 28) is flagged
+as a plausible but explicitly **unconfirmed** explanation: 28 is exactly
+this project's own already-cataloged, structurally-unrelated "28-byte
+periodic structure" (§27/§32/§38/§39) - it's possible this slot is
+simply occupied by an unrelated already-known structure in this later
+build, not a corrupted copy of the note table, but this wasn't chased
+further and shouldn't be overclaimed.
+
+**Where this leaves things**: both version predictions from §40's next-
+steps list resolved, but the 1.5.0.2 answer is more interesting than
+either clean alternative ("still 127" or "became real notes") - the
+table's specific byte-level encoding apparently didn't survive 5+ years
+of rebuilds in a structurally recoverable form, even though the
+surrounding functional content clearly did. This extends §19's "fully
+relinked on every build" finding one step further: not just absolute
+addresses shift release to release, but this specific config-table data
+*shape* can apparently be reorganized too, at some point across the
+product's life. Whether the note-mapping data still exists in some
+different encoding, or was genuinely dropped/restructured, remains open.
+Concrete next step if continued: check the intermediate releases (1.3.0,
+1.3.0.6, 1.4 - already used elsewhere in this investigation) with the
+same calibrated whole-file search, to narrow the 5-year gap down to the
+single release transition where the table's byte-exact form stops being
+recoverable - the same feature-anchored diffing-between-adjacent-
+releases technique §19 already validated.
