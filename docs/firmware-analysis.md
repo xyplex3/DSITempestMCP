@@ -3456,10 +3456,17 @@ would catch everything) found no readable text in any of the 5 blocks -
 reproducing and extending §24/§28's existing negatives with a more
 targeted method, still nothing.
 
-**Where this leaves things**: the period-7 mechanism is confirmed
-specific to Main 1.2.0.8's one preset-text block, not a general DSI
-binary-packing convention that recurs whenever new content lands in
-flash - a real, well-tested negative, not an under-tested gap. The two
+**Where this leaves things**: within the scope actually tested here
+(these 5 specific other content-growth/shrink blocks), the period-7
+mechanism is confirmed absent - a real, well-tested negative, not an
+under-tested gap. **Correction (2026-10-18, §45): this does NOT mean the
+mechanism is unique to the one preset-text block overall** - §45's blind
+whole-file scan later found it recurs at a second, much larger UI-text
+location in Main too. What's confirmed here specifically is narrower:
+it's not a general convention that shows up in *every* new-content
+block this project had already located by other means; it is a real,
+recurring text-packing convention for *some* large string pools in Main,
+just not these particular 5. The two
 newly-pinned exact Main block offsets are a genuine, useful correction to
 §19's original approximate description, and the discovery that both
 blocks show long (486/491-byte) completely clean stretches with zero
@@ -4095,3 +4102,109 @@ them user-editable; or, as this project has consistently concluded
 elsewhere, treat this as another question that direct ICSP hardware
 access would resolve far more reliably than further version-diff
 heuristics.
+
+---
+
+## 45. A major new finding: a second, much larger lossy UI-text region found via a blind whole-file scan - present in Main since launch, confirmed against the manual (2026-10-18)
+
+§17 proposed, but never executed, re-running the UI-text search "with
+short/truncated fragments rather than full manual phrases." §31/§33/§36
+developed a mature, statistically rigorous signature for detecting
+lossy-encoded text (a hard ceiling on consecutive clean masked-ASCII
+bytes, dropout bytes restricted to raw `0x00`/`0x80`, locally elevated
+density vs. neighbors) but had only ever applied it to pre-identified
+candidate blocks, never as a blind, unguided sliding-window sweep across
+an entire firmware image. This task combined both unexecuted ideas and
+found a real, substantial result - probably the single biggest open
+question this document closes in one session.
+
+**A second, much larger lossy text region exists in Main, entirely
+distinct from the already-documented Sound-Bank-B preset-name zone.**
+Roughly **23.5KB** in 1.5.0.2 (confirmed boundaries `0x6c4fb`-
+`~0x72100`), holding genuine abbreviated UI vocabulary rather than
+preset names: Mod Matrix source/destination labels, MIDI-pad-to-note
+mapping labels (`MIDI Note: Pad A1`-`A16`/`Pad B1`-`B16`, `Mute
+A1`-`A16`/`Mute B1`-`B16`, `Beat 1`-`16`), musical scale names,
+step-sequencer/LFO/filter-pole settings vocabulary, and save/load/
+export/calibration dialog and error-message text. **It sits immediately
+downstream of §5.1's already-known clean "Failed to..." error-string
+table**, with a sharp, instantaneous clean-to-lossy transition right at
+the boundary (the first control byte is literally the next byte after
+`...MIDI Buffer Overflow....`) - meaning §5.1's original clean find was
+only the "lucky" lead-in to a vastly larger pool that a plain `strings`
+search could never have reached past the first control byte.
+
+**Present in every Main build tested, from launch (1.1.3, Dec 2011)
+through the newest (1.5.0.2, Aug 2017), at version-specific relinked
+offsets** - direct evidence this is core, original firmware content, not
+something added later the way the Sound-Bank-B block was: 1.1.3 at
+`0x5e400`-`~0x61500` (settings vocabulary: `Controller`, `Switch,
+Normally Open/Closed`, `Shift On+Play`, `NRPN`, `Master`/`Slave`, LFO
+shapes, filter-pole counts); 1.2.0.8 at `~0x65c00`-`~0x6c300` (mod-matrix
+destinations plus UI status messages: `Slider Pressure 1-4`, `Choke 1`/
+`Choke 2`, `Project Initialized Successfully`, `MainOS Version:`,
+`Format Now`); 1.5.0.2 at `0x6c4fb`-`~0x72100` (Mod Matrix sources/
+destinations, the pad-note labels, scale names, calibration/save-load
+dialogs).
+
+**Validated with the same decisive test §36 established, run fresh on
+11 representative sub-windows across all 3 versions.** Calibration
+first: re-ran the test on Main 1.2.0.8's already-known zone and
+reproduced §36's published numbers almost exactly (max clean run 6,
+shuffled-control 0.0th percentile, chi-square 79.63 vs. the doc's
+79.14). **9 of 11 new-zone sub-windows reproduce the known positive's
+exact decisive signature** (0.0th percentile against a shuffled control,
+chi-square 74.8-239.9 against a critical value of ~22.5). The 2
+exceptions are themselves genuinely clean sub-tables with zero control
+bytes - meaning the new zone, like the already-known preset zone (per
+§31's own "sharp boundary, not gradual decay" finding), is internally a
+mosaic of clean and lossy sub-tables, not one monolithic encoding -
+consistent with, not contradicting, the rest of the result.
+
+**Independently confirmed against the real Tempest manual, not just
+density scoring.** `pdftotext` extraction of `Tempest_Manual_v1.4.pdf`'s
+own "Modulation Sources"/"Modulation Destinations" appendix lists `Osc 1
+Frequency`, `Osc 1/2 Pulsewidth`, `Slider Pressure 1/2`, `Foot Pedal
+1/2`, `MIDI Pitch Bend`, `MIDI Mod Wheel`, `MIDI Breath`, `MIDI
+Expression`, `Pad Pressure`, `Note Number` - exact verbatim matches to
+what the masked decode recovers. The manual's Choke/Calibration sections
+confirm `Choke 1`, `Choke 2`, `Calibrate Analog Oscillators and
+Filters`, `Calibrate Slider 1 and 2 Position`, `Calibrate Drumpads` -
+again exact matches.
+
+**Panel: scanned exhaustively, a clean, well-tested negative - closes
+out §17's proposed Panel search specifically.** All 3 distinct Panel
+builds (1.1, 1.2, 1.3 - which per §14 covers everything ever shipped,
+since 1.3-onward is byte-identical), two independent window
+configurations, 1,256 total window-checks: zero flagged windows
+anywhere. Panel's overall masked-printable baseline (11.5-12.3%) is far
+below Main's (38-44%), consistent with §10/§13/§16/§17's existing
+conclusion that Panel holds no UI text at all - now directly tested with
+the sharpest available method, not just inferred from weaker heuristics.
+
+**A necessary correction to §36's conclusion, recorded there and
+restated here for clarity**: §36 tested the period-7 mechanism against
+5 other known content-growth/shrink blocks and found it absent in all 5,
+concluding it was "specific to Main 1.2.0.8's one preset-text block."
+That conclusion was correct for the 5 blocks actually tested, but too
+broad - **the mechanism recurs here, at this second, much larger UI-text
+location, present since the product's launch.** The accurate framing is:
+this is a real, recurring text-packing convention DSI used for *some*
+large string pools in Main, not a one-off artifact of the single
+preset-text block, but also not a universal convention that shows up in
+every new-content block (§36's negative on those other 5 specific blocks
+still stands on its own terms).
+
+**Where this leaves things**: a genuine, major, independently-validated
+discovery - roughly 23.5KB of real UI menu/dialog text recovered for the
+first time in this entire investigation, present in the firmware since
+launch, confirmed against the actual manual. Concrete next steps if
+continued: run the full decisive test across the entire ~23.5KB span
+rather than representative sub-windows (cost reasons limited this
+session to sampling); build a §33-style fuzzy-match transcript against
+the manual's own menu/dialog vocabulary (the natural equivalent of §29's
+454-name dictionary, but for UI strings instead of preset names) to turn
+the legible-but-still-corrupted masked dumps into a curated, confidence-
+graded result; check Main 1.3.0/1.3.0.6/1.4 for the same zone (cheap,
+likely confirmatory, not yet done); Voice and SAM were out of scope here
+and remain unchecked.
