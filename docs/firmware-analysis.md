@@ -2548,6 +2548,55 @@ a live calibration/parameter dump to be captured and diffed directly
 against this exact byte range, a stronger test than further static
 analysis is likely to produce.
 
+**Refinement (2026-10-17, same day): the three suggested encoding schemes
+were tested - all clean negatives - but the exercise sharpened the
+fingerprint question itself into a cleaner, pre-decode form.** Nibble-swap,
+and alternate collector-group sizes (2/3/4/5/6, both byte orderings, all
+phase offsets, tested both on raw wire bytes and as a second-pass decode)
+all failed outright: none approaches this project's own confirmed
+clean-text/clean-code density thresholds, and critically, every alternate
+group size actively *destroys* the one unambiguously-real structural
+signal here (lag-28 autocorrelation drops from 0.47+ under the already-
+confirmed group-of-8 scheme to 0.02-0.12 under every alternative) rather
+than clarifying it - strong evidence none of these is the right scheme,
+not just "no better." Nibble-swap's apparent density jump (0.485→0.780)
+was directly shown to be an artifact: it just relabels the already-known
+fingerprint bytes as different printable ASCII characters, not a real
+decode (the resulting "text" is tight, repetitive, and non-English:
+`` `QD&hY&"hY.&`.U.hYAFQ*J... ``).
+
+**The `0x1D`/`0x9D` and `0x06`/`0x86` pairing is now mechanistically
+explained exactly, not just noted as suggestive** - checking every literal
+`0x1D`/`0x06` byte in the raw wire stream for whether its position's
+collector bit is 0 or 1 reproduces the decoded zone's exact pairing counts
+(435 raw `0x1D` occurrences split 221/214; 413 raw `0x06` occurrences split
+197/216 - both splits match the previously-measured decoded-zone counts
+exactly). This is a fully deterministic consequence of the project's
+already-confirmed group-8 collector-first scheme acting on raw wire data -
+no new scheme needed, and no new scheme found anything better.
+
+**But this reframes the real mystery into a sharper, pre-decode form worth
+recording.** The raw wire bytes themselves (before any unpacking at all,
+in the 2584-byte wire-payload span `0x7f658`-`0x80070` that decodes to this
+zone) show `0x1D` at **19.62%** and `0x06` at **18.65%** of all bytes -
+together over a third of this specific span - against a whole-payload wire
+baseline of 1.176%/1.240% (**16.7x and 15.0x elevation**), markedly sharper
+than the 8-11x elevation previously measured post-decode (the post-decode
+number is diluted by the deterministic 50/50 split into high/low-bit
+variants explained above). Checked whether these two values cluster at a
+single column of the record structure (which would tie them tightly to a
+specific field) - they don't: both spread across roughly half of all
+record positions mod 32, including appearing as the collector byte itself
+in some groups, so this is a broad, dense elevation, not a single-field
+artifact. **The open question is now sharper**: not "why does the decode
+show this pairing" (fully explained, mechanically) but "why do these two
+specific literal byte values (`0x1D`=29, `0x06`=6 as small integers) so
+dominate the raw transmitted/stored data in this exact region" - a
+question no decode-scheme hypothesis, including all three tested here, can
+touch, since it predates any unpacking. Not pursued further this session;
+no semantic hypothesis for what `0x1D`/`0x06` as small integers might mean
+in whatever this record format is has been tested yet.
+
 ---
 
 ## 28. Voice's used-flash boundary across all 6 releases: no recurring offset, but a cleaner story - a single, perfectly contiguous, monotonically-growing, consistently non-text edge (2026-10-17)
