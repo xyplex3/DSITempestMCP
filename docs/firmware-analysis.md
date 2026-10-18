@@ -2857,3 +2857,84 @@ manual English-word guessing against the lossy firmware bytes - it's
 re-running the masking/reconciliation against this closed 454-name
 dictionary, which should resolve the bulk of §25's remaining uncertainty
 in one pass rather than fragment by fragment.
+
+---
+
+## 30. The `0x20000` object-file-boundary hypothesis: tested with real control-flow tracing, and rejected (2026-10-17)
+
+§22's one remaining untested angle on the confirmed `0x20000` structural
+boundary (§15/§18/§22) - trace backward for a function epilogue/`jr $ra`,
+building a real control-flow view rather than raw per-word decoding - was
+done this session, across 4 of the 6 known firmware versions (1.1.3,
+1.3.0, 1.3.0.6, 1.5.0.2, spanning Dec 2011 to Aug 2017).
+
+**The simple "epilogue right before the boundary" test: a clean, consistent
+negative across all 4 versions.** The nearest `jr $ra` before `0x20000` is
+18-32KB away in every version (1.1.3: `0x183d4`, ~31KB; 1.3.0: `0x1b6a8`,
+~18KB; 1.3.0.6: `0x183a4`, ~31KB; 1.5.0.2: `0x18238`, ~31KB) - nothing
+close. `0x20000` itself never decodes to a plausible instruction or
+prologue in any version, and no padding/alignment byte run exists at the
+boundary in any of them - independently reproduces §22's "no gap" finding
+a second way. (Side note: all 4 versions' nearest pre-boundary `jr $ra`
+clusters tightly around file offset `~0x18000-0x184xx` - a small,
+cross-version-consistent landmark, flagged but not investigated further.)
+
+**A real prologue/epilogue pair does exist shortly after the boundary in
+1.1.3 only (`0x2011c`-`0x20178`, a textbook, self-consistent register
+save/restore function) - but it doesn't reproduce at the same relative
+position in the other 3 versions** (zero `jr $ra` and zero prologues found
+in the identical `[0x20000, 0x22000)` window in 1.3.0/1.3.0.6/1.5.0.2).
+Per this project's own standard of checking a result against multiple
+versions before trusting it: this is just one of several real functions
+that happens to sit near the boundary in one build, consistent with §18's
+already-established code-position drift release to release - not evidence
+for the object-boundary theory.
+
+**The decisive result: a real control-flow scanner (not per-word decoding)
+finds branches crossing `0x20000` in both directions, within what reads
+as a single continuous function, in 3 of 4 tested versions.** Built a
+shared-branch-target scanner over `[0x18000, 0x28000)` that groups
+PC-relative branches by target and flags targets hit by multiple
+independent sources straddling the boundary, filtering out the
+already-known "smoothly-varying structured data" false-positive shape
+(evenly-spaced consecutive sources, same mnemonic). Hand-verified,
+non-coincidental examples found in **1.5.0.2** (6 branches with distinct
+mnemonics and sensible, varied delay-slot instructions, all converging on
+pre-boundary target `0x1fd5c`, inside a function independently confirmed
+real by its `jal`+`nop` call sequences and sensible `$fp`-relative struct
+offsets), **1.1.3** (a textbook if/else-chain idiom, 5 branches each with a
+*different* store register in the delay slot, all targeting pre-boundary
+labels, inside the same function whose confirmed prologue/epilogue
+straddles the boundary per the paragraph above), and **1.3.0.6** (3
+branches with the identical delay-slot instruction converging on one
+pre-boundary target, inside a dense, clearly-real loop-unrolled arithmetic
+function). The 4th version (1.3.0) gave only one candidate pair sitting in
+a locally noisy area with implausible FPU/coprocessor opcodes on both
+sides - not counted as confirmed, honestly reported as inconclusive rather
+than forced into either direction. Target-address decode density was
+checked and found in line with (slightly above) this project's established
+60-73% real-code baseline, ruling out "this just landed in garbage."
+
+**Conclusion: this is a clean negative for the compilation-unit/object-file
+boundary hypothesis, obtained the specific way §22 called for.** Standard
+C compilation never emits a single function's internal PC-relative
+branches across two separately-linked object files - only calls
+(`jal`/`jr`) cross that kind of boundary, not conditional branches within
+one function body. Finding real branches crossing `0x20000` in both
+directions as part of one continuous function's control flow, reproduced
+in 3 of 4 independently-built versions spanning the full 2011-2017 range,
+is direct evidence against "one object ends right before `0x20000`, the
+next starts right at/after it."
+
+**Where this leaves things**: `0x20000` remains confirmed-real-and-
+structural - reproduced a 4th independent way this session (the
+decode-density spike, again matching §22's 96.5-99.2% range closely) - but
+not because of an object-file split. Between this result and §22's earlier
+negatives (no documented linker convention matches a 128KB reservation;
+anchoring a base-address search there also fails exhaustively), the
+"object-file boundary" question now looks reasonably exhausted - not
+recommended for further attempts. The boundary's real cause remains
+genuinely unidentified. The ICSP hardware path (§7 item 5) is unaffected
+by this result and remains the only path that resolves the base-address
+problem outright; this result only narrows what `0x20000` *isn't*, not
+what it is.
