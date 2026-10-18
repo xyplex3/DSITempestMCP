@@ -1025,6 +1025,20 @@ needed:
   spot-check a specific byte range without spinning up a full Ghidra
   project - `capstone.Cs(capstone.CS_ARCH_MIPS, capstone.CS_MODE_MIPS32 +
   capstone.CS_MODE_LITTLE_ENDIAN)`.
+- **Preset-text decoder** (persisted, unlike everything else in this
+  section - the one exception worth keeping on disk rather than
+  rebuilding each session): `decode_preset_text.py`, in this repo's
+  parent directory's `firmware/` folder (sibling to `tempest-mcp/`, not
+  inside this repo). Implements the §§23/25/27/29/31-34 deletion-
+  mechanism model directly - decodes `Tempest_Main_1.2.0.8.syx`, walks
+  the lossy preset-text zone classifying each byte by its *raw* value
+  (control bytes are `0x00`/`0x80`, indistinguishable after masking, so
+  the raw value matters), and fuzzy-matches the result against the
+  embedded 454-name §29 dictionary. Run with `python3 -I
+  decode_preset_text.py [path/to/Tempest_Main_1.2.0.8.syx]`. Gets
+  299/319 fragments (94%) matched confidently on its first run - a real
+  improvement over every prior manual transcription pass in this
+  document.
 
 ## 7. Suggested next steps
 
