@@ -4644,3 +4644,82 @@ other dictionary clusters in the zone (Mod Sources, save/load dialogs,
 etc.) is plausible given this result but untested - a reasonable next
 step if continued, alongside extending this sliding-window approach to
 the rest of the ~23.5KB zone with the fuller dictionary.
+
+---
+
+## 51. The §46-flagged "third region" is actually two distinct things: a third lossy UI-text sighting with genuinely new content, and a previously-unseen 20-byte periodic structure (2026-10-18)
+
+Direct follow-up characterizing the region §46 only noted in passing
+("control-byte density rises again starting around `0x72e00`"). Applied
+the full established test battery (masked-density/max-clean-run vs.
+shuffled control, period-7 phase chi-square, lag autocorrelation against
+a fair same-byte-shuffle control per §27/§38's own method, row-reshape
+for repeated-row/counter patterns, capstone decode density plus FPU/
+coprocessor-opcode scanning) before drawing any conclusion.
+
+**The quiet gap itself is genuinely quiet, confirming §46's boundary was
+basically right.** `0x720e5`-`0x72e67` (3,458 bytes): only 47 scattered,
+non-clustered control bytes at ~1.4% density, below the file's own 19.8%
+whole-file baseline - not a zone by any test. The real onset is `0x72e67`,
+103 bytes later than §46's passing estimate.
+
+**Sub-region A (`0x72e67`-`~0x73200`, 925 bytes): confirmed as a third
+sighting of the same period-7 lossy mechanism, with genuinely new
+content never in §45/§46's transcript.** Both decisive tests reproduce
+the known positive: max clean run 9 at the 0.2nd percentile of a
+2000-trial shuffled control; period-7 phase chi-square 104.68 (critical
+≈22.46), directly comparable to a fresh calibration re-run on a known
+§46 cluster (chi-square 71.70). The recovered content is disk/flash-
+formatting and OS-backup messages, a different category than anything
+previously transcribed: `"Formatting Drive 0/1"`, `"Drive 1 Error in Dir
+Tree Init:"`, `"**** Flash Error ****"`, `"**** Status Byte Received in
+data: at byte"`, `"**** Checksum error on MIDI data ****"`, `"**** Last
+MIDI byte not EOX ****"`, `"Writing!!! Do not power down until FX 1
+LEDs... reach the top and stop moving, then restart the Tempest"`, and -
+directly relevant to this project's own OS-update work - `"Main OS MIDI
+Dump ***"`, `"*** Panel OS MIDI Dump ***"`, `"**** Voice OS MIDI Dmp
+****"`.
+
+**Sub-region B (`~0x73200`-`0x7479a`, 5,526 bytes): neither lossy text
+nor the already-known 28-byte structure - a distinct, previously
+uncharacterized structure with its own 20-byte period.** Not lossy text
+(period-7 chi-square 8.06, below the 22.46 critical value - no phase
+anchoring). Not §27/§38's documented structure either, tested properly
+rather than assumed: lag-28 autocorrelation elevation under a fair same-
+byte-shuffle control is only 0.94-1.26x (flat, no signal), the longest
+run of identical 28-byte rows is only 1 (vs. the known structure's
+multi-row repeats), and the byte-fingerprint only partially overlaps
+(`0x1D`/`0x9D`/`0x06`/`0x86`/`0x6E` elevated, but `0x55`/`0xAA`/`0xBB`/
+`0x5D` - part of the documented pairing - flat/absent here). **A genuine,
+different period was found instead: 20 bytes** - a clean harmonic series
+at lags 20/40/60/80 (2.2-3.35x elevation over a fair shuffled control at
+the strongest sub-window), with 15 consecutive byte-for-byte identical
+20-byte records found at `0x74254`-`0x74380`. Confirmed not real MIPS
+code: decode density 53.3% against a freshly-measured 81.6-84.0%
+real-code baseline in this same build, with a mnemonic mix dominated by
+unusual-for-code trap instructions (`tnei`/`teqi`/`tlti`) and FPU/
+coprocessor opcodes on a confirmed FPU-less chip - though the `jal`/`j`
+absolute-target-validity test (§38's stronger test) is honestly flagged
+as **not decisive here**, since even known-good baseline regions produce
+comparably nonsensical targets under the unresolved base-address
+problem - this specific sub-test's negative isn't as clean as §38's was.
+One weak, explicitly-not-trusted textual trace was also noted: a single
+character per 20-byte record spells `"Basic "` (a confirmed real Tempest
+beat-label term per the manual) - flagged per §46's own calibration
+standard that single short words at this scale are chance-saturated, not
+claimed as a real finding.
+
+**Where this leaves things**: closes out what the §46-flagged region
+actually is - not one ambiguous zone but two distinct things, one a
+real (third) extension of the already-understood lossy-text mechanism
+with new content, the other a genuinely new, previously-unseen periodic
+structure that is NOT the already-exhausted 28-byte phenomenon, despite
+superficial fingerprint similarity. This 20-byte structure is a fresh,
+unexhausted open question - distinct from §27/§32/§35-39's closed
+28-byte thread, not a re-opening of it. Concrete next steps if
+continued: extend the manual-vocabulary matcher over sub-region A's
+~925 bytes systematically (only hand-read here); test whether the new
+20-byte structure recurs elsewhere in this or other Main builds, the
+way §26/§38 found repeat sightings of the 28-byte structure; investigate
+the adjacent, unexplored area immediately past `0x747a0` (clean,
+non-printable, `F`/`G`-heavy pattern).
