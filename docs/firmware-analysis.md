@@ -4011,3 +4011,87 @@ revisiting this neighborhood. Concrete next steps if continued: apply
 Tune candidate to see if its lifecycle matches a documented transition
 the way the note table's did; the envelope-shaped table at
 `0x705d2`-`0x70652` remains a genuinely open loose thread.
+
+---
+
+## 44. Hunting for the OS 1.3 replacement parameter structure: a well-explained negative, plus two newly-found pointer/index table structures (2026-10-18)
+
+Direct follow-up to §42's explicit "the actual replacement 32-parameter
+data structure itself was not located" - running §19's erased-flash-
+boundary diff on the one pair that matters (1.2.0.8→1.3.0, never tested
+before) and on 1.4→1.5.0.2 (also never tested) to try to find it.
+
+**The 1.2.0.8→1.3.0 pair has exactly one substantial erased-flash-
+boundary signal in the entire 524,609-byte file, and it's not a new
+parameter structure - it's the relocated preset-name/config text
+cluster.** The one block found (`0x72774`-`0x7807f`, 22,795 bytes,
+99.87% `0xFF`→99.84% content) recovers the same preset-name vocabulary
+already known from §19/§20 (`Chain`, `LinnD`, `SCI To`, `909ish`,
+`808ish`) in corrupted/fragmentary form - smaller than the original
+1.2.0.8 block (22,795 vs. 29,713 bytes), consistent with (not proof of)
+something having been removed from this neighborhood. The 6-byte-zero-
+tail record format itself, searched with the GM-range restriction fully
+dropped this time (a broader, more general test than §42's), is
+confirmed completely absent from the whole 1.3.0, 1.3.0.6, and 1.4
+images - only trivial all-zero filler runs exist anywhere. **A byte-exact
+search for the known 16 bank-A note values, at any stride 1-32, finds
+zero hits in 1.3.0, 1.3.0.6, 1.4, or 1.5.0.2** (correctly finds the one
+real hit in 1.2.0.8 as a sanity check first). A stride-agnostic generic
+search (1-16 byte strides, any tag offset, run length 12-48) across the
+whole file and the relocated block found nothing resembling a parameter
+array anywhere.
+
+**A real, well-reasoned explanation for the negative, not just "didn't
+find it": the erased-flash-boundary technique has a structural blind
+spot directly relevant here.** It can only detect content landing in
+previously-*unused* flash at the same absolute offset. If DSI
+implemented the 32 new parameters by extending or reusing an
+already-allocated System-settings block (plausible - many Tempest
+System parameters already existed before OS 1.3), that produces no
+erased-flash transition at all, and this technique is blind to it by
+construction - the exact scenario this task was warned to expect. This
+isn't a tooling failure; it's a real limit of the method being
+confirmed, not assumed.
+
+**A genuinely useful side-finding, not what the task was looking for:
+two real pointer/index table structures found inside the relocated
+preset-name cluster, neither previously documented.** A generic
+stride-agnostic scan flagged two apparent "constant tag" candidates
+that turned out, on inspection, to be structural tables of a different
+kind entirely: (1) at `0x7618c`, records of the form `9D 05 XX <low
+byte>` - literal KSEG0 Program Flash pointers in the `0x9D05XXxx` range,
+consistent with the confirmed Program Flash address range (§5.6) - a
+jump/string-pointer table, not parameter data; (2) at `0x762fc`/
+`0x76280`, records of `[u16 LE offset incrementing by 8][page-byte
+incrementing every 32 entries][small length byte]` - a string offset/
+length index table for the relocated name cluster, where the apparent
+32-record "constant tag" turned out to just be the page byte of a
+sequential counter, not a real tag field. Neither is the sought parameter
+structure, but both are real, newly-identified table shapes worth
+keeping on record.
+
+**The secondary pair (1.4→1.5.0.2) found one block, also not a
+parameter structure.** `0x77483`-`0x7977c` (9,465 bytes, clean
+`0xFF`→content transition) contains filesystem/folder-path content
+(`Kicks`, `Snare`, `Beats`, `Factor[y]`, `Proje[ct]`, `/B/Ini`, `/S/Fac`,
+squarely in §25's directory-string territory), a different functional
+neighborhood from the preset names entirely (which sit elsewhere in this
+build, outside the block). Same string-offset/index table shape found
+here too, same conclusion.
+
+**Where this leaves things**: the erased-flash-boundary technique has
+now been run on the one pair that mattered and genuinely doesn't find
+the OS 1.3 parameter structure - a well-tested, well-explained negative,
+not an unexplored gap. Concrete next steps if continued: abandon this
+specific technique for this question (it's structurally blind to the
+most plausible implementation); instead try locating Tempest's
+*existing* System-parameter storage area (tempo, swing, click volume -
+parameters known to predate OS 1.3) and check whether its length changes
+by something close to 32 records between 1.2.0.8 and 1.3.0, which would
+show as a boundary shift rather than an erased-flash transition; try a
+looser strided search allowing a constant additive offset or unit change
+for the 16 note values, in case DSI changed representation when making
+them user-editable; or, as this project has consistently concluded
+elsewhere, treat this as another question that direct ICSP hardware
+access would resolve far more reliably than further version-diff
+heuristics.
