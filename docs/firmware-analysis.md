@@ -3928,3 +3928,86 @@ located. §40's identification is now one of the best-evidenced findings
 in this entire document - confirmed against DSI's own manual text at two
 independent points (the default note table itself, and the Bank A/B
 pad-count framing), not just a strong statistical coincidence.
+
+---
+
+## 43. Two more entries identified at moderate confidence (Master Transpose, Fine Tune), an honest negative on the rest, and a new unidentified envelope-shaped table found adjacent (2026-10-18)
+
+Follow-up applying §40-§42's addendum-cross-reference technique to the
+remaining ~20 unidentified scalar runs in the same `0x70194`-`0x705b4`
+table, after reading all 5 locally-available addendum PDFs in full and
+building a complete numeric-feature checklist. Re-verified the full
+176-record table byte-for-byte against §40/§41/§42 before trusting any
+new claim.
+
+**Finding 1 (moderate confidence): Master Transpose and Fine Tune.** Two
+adjacent runs - tag=`0x18`(24, max)→value `12` and tag=`0x64`(100,
+max)→value `50` - match OS 1.1's documented "Master Transpose" (±12
+half-steps, 25 raw values 0-24, center=12=0 semitones) and "Fine Tune"
+(±50 cents, 101 raw values 0-100, center=50=0 cents) exactly, under the
+already-confirmed `tag = max raw value` convention from §40/§42's GM-note
+identification. Both tags are globally unique in the whole 176-record
+table (`0x18` and `0x64` each appear exactly once), and no other
+addendum-documented parameter has a range of exactly 25 or exactly 101
+steps - the specificity of 101 in particular is a real signal, not a
+round-number coincidence. **Explicitly rated below §40/§42's tier**: this
+is two single-value matches, not a 16-value statistically-overwhelming
+sequence, and no DSI-published raw-byte table exists to confirm it
+directly the way the GM-note table was confirmed. Worth testing further
+(§41's cross-version presence/absence method) but not treated as
+settled.
+
+**Finding 2 (an honest, well-tested negative): the remaining ~18 runs
+cannot be individually identified, and this is a real structural limit,
+not under-effort.** Tags `0x01`/`0x02`/`0x03` each recur across many
+genuinely distinct runs (7/5/3 separate runs respectively) - OS 1.1/1.2
+alone document at least 9 distinct binary/few-option System settings
+that could plausibly map to max=1/2/3 (Local Control, Touch Slider Latch
+Mode, Pad Velocity Curve, Tap Tempo behavior, and others), and a single
+repeated `(max, value)` pair simply doesn't carry enough information to
+disambiguate between them, unlike the 16- or 32-value sequences that
+made the GM-note and Bank-A/B identifications possible in the first
+place. Two other globally-unique tags (`0x1f`=31 and `0x78`=120) were
+checked against every addendum-documented range and found no match
+(no parameter with exactly 32 or 121 steps) - a clean negative, not a
+gap. The 64-record all-zero tail (`0x70434`-`0x705b3`) remains
+uncharacterized.
+
+**Finding 3 (new, genuinely unexplained structure found just past the
+known table): a real, bounded, distinct ramp-shaped data table, not
+addendum-matched to anything.** Scanning the surrounding region for other
+6-byte zero-tail records found nothing new (the only other hits are
+trivial artifacts of the known table's own all-zero tail aligning at
+other phases). But immediately after that tail, at `0x705d2`-`0x70652`
+(~128 bytes), sits a visually obvious, previously undocumented structure:
+a monotonic ramp 0→12, a plateau at 12, a ramp back down 12→1, then a
+clean 7-byte-periodic tail (`81 01 00 01 01 01 01`, repeating 6-7 times)
+before terminating. Entropy is 3.74 bits/byte - well below the
+surrounding high-entropy code/data (7.79 bits/byte, checked as a noise
+baseline) but above the known table's own 1.43 bits/byte, consistent
+with "real structured small-integer data, a different shape than the
+known table." Reads like a small ADSR-envelope or LFO-waveform lookup
+table (attack-sustain-decay-release in miniature) - but no addendum
+describes it, which makes sense if real: envelopes/LFOs are core OS 1.0
+functionality, never introduced as a "new" feature in any addendum, so
+this specific cross-reference technique wouldn't be expected to find it
+even if the structural read is correct. Confirmed absent at the identical
+offset in Main 1.3.0 (exact-substring search, zero matches); the same
+1.3.0 offset instead holds masked-ASCII Play-List-related UI strings
+("Hit pad (1-4) to select Bar to copy over...", "CopyStep", "Error: No
+event to copy!") - independent corroboration that this whole neighborhood
+really was reorganized starting OS 1.3, consistent with §42's story, even
+though this specific table's identity is unrelated to the MIDI-note
+question.
+
+**Where this leaves things**: two moderate-confidence new parameter
+identifications added to the table's picture, a genuine structural limit
+confirmed (most of the remaining scalar runs are individually
+unidentifiable with this data alone, not a research gap), and a real,
+previously-unnoticed structure found just past the table's boundary -
+unidentified, but confirmed real and distinct, worth flagging for anyone
+revisiting this neighborhood. Concrete next steps if continued: apply
+§41's cross-version presence/absence method to the Master Transpose/Fine
+Tune candidate to see if its lifecycle matches a documented transition
+the way the note table's did; the envelope-shaped table at
+`0x705d2`-`0x70652` remains a genuinely open loose thread.
