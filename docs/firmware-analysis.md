@@ -1850,3 +1850,93 @@ is new, reproducible, and worth investigating further if this thread
 continues (e.g. checking whether `0x20000` coincides with anything else
 structurally fixed) - but doesn't resolve the base address itself. The
 ICSP hardware test (§7 item 5) remains the one path that does.
+
+---
+
+## 19. Feature-anchored version diffing: the first genuinely readable, meaningful content found anywhere in Main's firmware (2026-10-17)
+
+A different strategy from everything else in this document: instead of
+guessing addresses, use the OS addendum PDFs' documented feature additions
+as anchors and byte-diff the firmware versions that bracket each release,
+looking for new content - no base-address assumption needed, since this
+works on raw file offsets.
+
+**Important negative result first: raw diff percentage doesn't work as a
+feature-size proxy.** All three tested pairs (1.1.3→1.2.0.8, the
+within-point-release control 1.3.0→1.3.0.6, and 1.3.0.6→1.4) show
+84-87% of all 524,609 bytes differing - the "bug-fix-only" control pair
+actually shows *more* total difference (86.77%) than the big feature pair
+(84.36%). Root cause, confirmed by tracing known substrings across
+versions (they drift by tens of KB release to release) and by
+content-aware anchor matching (match offsets swing wildly, no stable
+realignment): **this firmware is apparently fully relinked on every
+build** - a single added function anywhere shifts every absolute address
+downstream, so most of the diff is recompile churn, not real functional
+change. Simple byte-diffing doesn't work here.
+
+**What did work: filtering specifically for erased-flash (`0xFF`)
+becoming real content.** Unprogrammed flash doesn't shift with relinking -
+it only grows or shrinks at the edge of however much of the image is
+actually used. This signal is immune to the churn problem above.
+
+**The result: a real, substantial, readable content block exists in Main
+1.2.0.8 and nowhere else.** At the exact same file offset (`0x6ad09`-
+`0x7211a`, 29,713 bytes) that's pure `0xFF` in 1.1.3, **1.2.0.8 is 99.84%
+real content** - and that content contains genuinely readable ASCII
+strings: dozens of unmistakable **factory drum/synth preset names** -
+`White Noise`, `Pink Noise`, `Cicada`, `Chain Link`, `Tight Boom`, `Mid
+Kick`, `Slap Kick`, `Boom Kick`, `SCI Tom Cart Kick`, `LM-1 Bass Drum`,
+`LinnDrum Bass`, `909ish`, `808ish`, `Long Time 808`, plus synthesis-
+parameter labels (`Lowpass Filter`, `Waveshape Osc 1/2`, `Pan and
+Volume`) and one literal system message, `**** Calibrating Done;
+Restart ****`. **This is the first time this investigation has found
+genuinely meaningful, readable content anywhere in Main's firmware** -
+everything else found to date has been structural (headers, jump tables,
+padding) or explicitly ruled out (UI text, as of §17).
+
+**Confirmed version-specific, not a general feature**: searched the
+entire decoded image of all other 5 firmware versions for six of these
+exact distinctive strings - **zero hits anywhere else**. This content
+exists only in the single 1.2.0.8 build among everything sampled across
+2011-2017.
+
+**Honest, important caveat: not confirmed to be USB-related**, despite
+the task's original hypothesis (USB was OS 1.2's headline feature). No
+USB descriptor-shaped strings or protocol-stack signature were found in
+or near this block. The content (drum/synth preset names) maps far more
+plausibly to OS 1.2's other documented feature, **Sound Bank B** (16 new
+default sounds per Beat) - speculative, not proven, but the better-fitting
+hypothesis of the two. Decode-density inside the block (56.45%, close to
+that build's own 58.91% baseline) rules out "pure string table" - compared
+against a known calibration case (the confirmed §5.1 error-string table,
+which shows a real, depressed 37% vs. 62.75% baseline) - so this is a
+**mixed code/string/data region**, not isolated text.
+
+**A genuine, honestly-reported limitation of the method**: the
+1.3.0.6→1.4 pair, despite OS 1.4's addendum listing many substantial
+features (8-bar sequences, sequencer MIDI note output, quantize-disable,
+new sound categories), produced only a ~1.7KB filler-to-content block -
+far smaller than 1.2.0.8's 29.7KB. **This method catches new default
+content/asset additions well, but misses new logic/control-flow
+additions**, which can be implemented by editing existing code in place
+without needing new blank flash space. A real limit on the technique's
+generality, not just this particular search.
+
+**Smaller, unexplained side-finding**: the control pair (1.3.0→1.3.0.6)
+and the 1.4-anchored pair both show their filler/content transition at
+almost exactly the same file offset (~`0x76800`) despite being completely
+different version pairs - possibly a recurring "scratch" region reused
+differently release to release, not characterized further. The
+1.3.0→1.3.0.6 block is also notable for going the *opposite* direction
+(dense binary content becoming erased, i.e. something was removed, not
+added) - the only case of content disappearing found in this whole
+investigation.
+
+**Where this leaves things**: this is a genuinely new, validated technique
+(not base-address-dependent) that found real content for the first time.
+Concrete next steps if continued: parse the 29.7KB block's record
+structure to count how many presets it holds (16, matching Sound Bank B
+exactly, would be strong corroboration); check whether this content moved
+to a new offset by 1.3.0 or was genuinely deleted; check Voice's firmware
+for the same version pairs, since preset/sound data plausibly lives there
+rather than in Main.
