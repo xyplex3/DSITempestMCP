@@ -5433,3 +5433,97 @@ per-build byte differences position-by-position to check for
 correlation with build date/version/checksum; a full sweep of all
 Tier-2 content islands beyond the ones spot-checked here, lower
 priority given how consistent the spot-checks already were.
+
+---
+
+## 60. The `(null)`/hex-table fragment confirmed as a real libc printf conversion table; the 5 missing scale names found in 1.4/1.5.0.2 only, revealing a sharper OS-version boundary than §57 implied (2026-10-18)
+
+Direct follow-up to §59's two open leads, run against freshly re-derived
+decoded firmware for all 6 versions (`/tmp/scratchpad` had been cleared
+since the prior session; re-acquired via Sequential's live download for
+1.5.0.2 and the Wayback Machine against `davesmithinstruments.com` for
+the other 5 - all 6 re-confirmed to decode to exactly 524,609 bytes,
+the standing correctness check).
+
+**Finding 1: the `(null)`/hex-table fragment is confirmed as a real,
+recognizable C-runtime data layout - a degraded `"(null)"` guard string
+immediately followed by a degraded lowercase hex-digit table
+(`0123456789abcdef`) immediately followed by a degraded uppercase
+hex-digit table (`0123456789ABCDEF`) - found in this exact adjacent
+order in all 6 versions.** This specific triad (null-pointer guard
+string + both-case nibble-to-ASCII tables, physically adjacent) is the
+classic layout of a `printf`/`vfprintf` conversion-table block (used
+for `%p`/`%x`/`%X`), strongly supporting it as a genuine compiler/
+C-library-supplied table rather than coincidence - plausibly
+Microchip's XC32 C runtime, though attempts to pull the actual
+newlib/XC32 source for independent confirmation hit GitHub access
+walls and were not pursued further per this project's own
+don't-rabbit-hole standard.
+
+**Important correction to the corruption model this project had been
+using**: characters here are sometimes fully *dropped* from the byte
+stream, not just zeroed/`0x80`-marked in place - e.g. 1.1.3's uppercase
+table reads `...8,[A]hibit,B,blank,[C]hibit...` with no byte at all
+standing in for the missing `9`. This shifts apparent string length and
+is a materially different failure mode than the fixed-period
+blank-in-place model documented since §31/§33 - the two mechanisms can
+coexist in different content, but this specific fragment's corruption
+is not a clean modular rule. One version (1.2.0.8) has a byte-for-byte
+perfect, zero-corruption copy of the uppercase table sitting right next
+to a lowercase table in the same build that's missing 2 characters -
+direct proof there's no simple "every Nth byte" explanation for this
+fragment's damage.
+
+The fragment is not byte-identical across versions (different absolute
+offset and different specific corrupted characters each time) - mostly
+explained by ordinary relinking, except for one unexplained
+coincidence worth flagging: 1.1.3 (Dec 2011) and 1.4 (Jan 2015), three
+years and ~50,000 bytes apart in file offset, show the *exact same*
+missing-character sets in both hex tables and the same `"nll"` reading
+of `(null)` (both missing the `u`) - too specific to be chance, but the
+mechanism wasn't identified. Checked and ruled out: `(nil)`, `true`/
+`false`/`TRUE`/`FALSE` strings nearby in any version; a separate plain
+decimal-only table (the decimal digits are just the first 10 characters
+of each existing hex table, as expected, not a distinct structure).
+Refined anchor-to-fragment offsets for future reference: ~519-520
+bytes in 4 of 6 versions (1.1.3, 1.3.0.6, 1.4, 1.5.0.2), ~352-354 bytes
+in the other 2 (1.2.0.8, 1.3.0) - both sub-groupings internally
+consistent, reason unknown.
+
+**Finding 2: the 5 previously-missing scale names (Dorian, Phrygian,
+Lydian, Mixolydian, Locrian) are confirmed present - but only in 1.4
+and 1.5.0.2, not 1.3.0, sharpening §57's boundary claim.** All 5 found
+in situ in both versions, immediately after the already-known exotic-
+scale sublist (Hawaiian/Mohammedan/Mongolian/Javanese) and immediately
+before "Sequencer" - the expected location, not a stray weak match.
+1.5.0.2's "Lydian" is fully clean (zero corruption, all 6 letters);
+the other instances are mildly degraded (1-2 dropped characters each),
+consistent with Finding 1's drop-not-just-blank corruption mode.
+
+**1.3.0 is a genuine, well-evidenced negative, not a search miss**: the
+analogous sublist was directly located (anchored on "Pelog"/
+"Mongolian"/"Sequencer") and reads straight from "...Mongolian,
+Sequencer, Record Arm..." with no room for and no trace of any of the
+5 names anywhere in that 524,609-byte image. **1.3.0.6 is inconclusive,
+not confirmed absent**: even the anchor words ("Pelog", "Mongolian",
+"Hawaiian") couldn't be located anywhere in that file with the same
+method, so this may be a search-coverage gap rather than a real
+absence - flagged as open, not resolved.
+
+**This means the modal-scale-name list (at minimum the 5 target names)
+was most likely introduced between OS 1.3.0.6 and OS 1.4, not present
+across "1.3.0 onward" as §57's phrasing implied** - the already-
+confirmed 30/35 scale names found by §57 need re-checking against which
+specific versions actually contain them, since this result shows the
+full 35-name list isn't a stable OS-1.3-wide fact the way some other
+§57 content is. Not yet done - a discrepancy to reconcile, not a
+contradiction that's been resolved.
+
+**Where this leaves things**: both of §59's concrete next steps
+produced real answers rather than dead ends. The printf/hex-table
+identification is solid and closes that specific question. The scale-
+name result is a genuine, useful finding but opens a new small
+discrepancy (which exact versions carry the full 35-scale list) worth
+a future pass reconciling against §57's own version-by-version
+evidence, plus completing the 1.3.0.6 search with better anchor
+coverage before calling it a true negative like 1.3.0.
