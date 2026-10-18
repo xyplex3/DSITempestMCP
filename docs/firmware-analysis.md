@@ -2075,3 +2075,70 @@ real, documented alternative encoding, not a new guess, and would need an
 entirely different validity test (added to the table's own address rather
 than compared against the Program Flash range directly) than anything
 tried in §5, §14, §18, or here.
+
+---
+
+## 22. Is `0x20000` a real linker boundary? Sharper confirmation it's structural, but not what it is - and the anchor hypothesis also fails (2026-10-17)
+
+Companion to §21, investigating the `0x20000` boundary itself (§15/§18)
+from two angles: is it a documented linker/flash-partition convention, and
+does anchoring the base-address model there (instead of file offset 0)
+resolve the known jump tables.
+
+**No documented PIC32MX5/6/7-era linker or NVM convention matches a
+128KB reservation - clean negative.** Real bootloader-size examples found
+(Microchip's own 4KB reset-handler reserve, a real PIC32MX795F512L
+community linker script's 24KB bootloader region, an AN1388 port's 8KB
+bootloader) are all a few to a few tens of KB - project/bootloader-size
+dependent, nowhere near 128KB. PIC32's documented NVM "Panel Erase"
+splits flash into two 256KB halves for this chip, not 128KB quarters.
+`0x20000` is numerically clean (exactly 512KB/4) but matches no
+documented convention found anywhere.
+
+**A genuinely sharper, independently-confirmed version of §15's original
+signal.** At finer 1KB granularity (vs. §15's original 8KB buckets), **the
+single bucket at file offset `0x20000`-`0x20400` shows a sharp decode-
+density spike to 96.5%-99.2% in all 6 independently-built versions**,
+standing clearly above the noisy ~50-85% range on both sides. Direct
+disassembly (not just density counting) on the oldest and newest versions
+confirms this qualitatively: the ~1-2KB immediately before `0x20000` is
+visibly incoherent (impossible-on-this-chip MSA/FPU instructions,
+frequent non-decodes), while code starting at or within ~0x50 bytes of
+`0x20000` is unmistakably real - consistent struct-field accesses, proper
+`jal`+delay-slot call sequences, genuine KSEG0-pointer construction via
+`lui`+`addiu`. **Three independent methods now agree** (§15's branch-
+in-bounds test, this session's finer-grained density spike, and direct
+visual disassembly) that `0x20000` is a real structural transition, not a
+statistical artifact of bucket size.
+
+**A real, useful correction to the standing hypothesis**: no gap or
+padding run exists immediately before `0x20000` in any version checked,
+including the smallest/oldest (1.1.3) - **this argues against "unused
+reserved bootloader space" as the explanation**, since truly reserved,
+never-written space would show blank/erased bytes, not more (just
+noisier) content. The boundary's real cause remains unknown - a
+compilation-unit/object-file boundary (a separately-linked module
+starting here) is a live alternative, not ruled out.
+
+**The anchor-at-`0x20000` hypothesis itself: also a clean negative,
+extending §21's exhaustive result.** Tested 15 specific documented/round
+candidate bases (including the real 4KB/24KB bootloader-reserve values
+found above) against all 6 versions' known jump tables - 0/N or
+out-of-bounds in every case. A dense sweep (4-byte granularity, 1MB
+window around the expected area) requiring joint validity across all 6
+versions found no base that works for more than 2 of 6 simultaneously.
+Individual per-version 100% hits were inspected directly and are, for the
+third independent time this session (after §18 and §21), the same
+"sliding window over smoothly-varying structured data" false-positive
+shape - wide flat plateaus across dozens of adjacent candidates, exactly-
+repeated 4-byte words, not a real table.
+
+**Where this leaves things**: `0x20000` is now solidly confirmed, three
+ways, as a real content boundary - but *why* remains unknown, and using it
+as a base-address anchor doesn't work any better than file offset 0 did.
+Concrete next step if continued without hardware: trace backward from
+`0x20000` for a recognizable function epilogue/`jr $ra` (supports "end of
+one compiled object, start of another" over other explanations) - not yet
+attempted, would benefit from a real control-flow view rather than raw
+per-word decoding. The ICSP hardware path (§7 item 5) remains the
+standing recommendation, unchanged by this result.
