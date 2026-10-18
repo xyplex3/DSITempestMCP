@@ -4804,3 +4804,92 @@ the per-word results before treating any further list as final; persist
 the 35-scale-name table and the Osc/Mod reverse-ordering pattern as
 confirmed structural facts (both independently reached here and in
 §50).
+
+---
+
+## 53. The OS 1.3 settings-text pool is far bigger than any prior zone, and the old local-adjacency convention doesn't survive the reorg - the missing values remain missing, but the question is now sharper (2026-10-18)
+
+Direct follow-up testing §44's suggested approach for locating the 80
+OS 1.3 "MIDI Note:"-type parameter values: rather than hunting for a new
+erased-flash transition (already confirmed structurally blind to this,
+§44), check whether Tempest's existing, pre-1.3 settings area (holding
+Master Transpose, Fine Tune, Click Level) grew in place. Re-verified the
+decode pipeline and reference files against §40/§42/§43's exact known
+values before trusting anything new.
+
+**Pinned exact byte offsets for the Master Transpose/Fine Tune/Click
+Level text labels in Main 1.3.0 for the first time** (§48 only
+established these labels exist somewhere in the new zone, not where):
+`"Master Transpose"` at `0x6b6dc`, `"Fine Tune"` at `0x6b6f0`, `"Click
+Level"` at `0x6b6fc` - confirmed absent from 1.2.0.8 by direct search
+(zero hits, both plain and masked), independently reproducing §48's new-
+to-1.3.0 claim with exact offsets attached.
+
+**A major, newly-measured architectural fact: these labels sit inside
+one single, continuous lossy-text region running essentially
+uninterrupted from `~0x69e00` through `0x753ff` (at least ~45KB) - far
+larger than any previously-measured single zone in this document
+(bigger than §45's 23.5KB 1.5.0.2 finding), with a sharp, confirmed
+boundary at `0x75400` matching this project's established "sharp
+boundary, not gradual decay" pattern.** Traced directly via masked-ASCII
+dump: the region runs through the full System-menu vocabulary (pedal/
+MIDI/clock settings) and then **all 80** `MIDI Note: Pad/Mute/Beat`
+labels in full in-context order, confirming §48's count directly in
+place for the first time, before continuing into hundreds of unrelated
+dialog/status/error strings. **This is architecturally significant for
+the open question**: in 1.2.0.8, a parameter's text label sat
+immediately before its own value table (local adjacency, the convention
+§40's original discovery relied on). In 1.3.0, labels for dozens of
+unrelated features are now interleaved in one giant pool with no table
+immediately following any specific parameter's label - the old
+adjacency convention this approach needed no longer holds structurally,
+which is itself a real, informative reason the anchor doesn't lead
+directly to a value table the way it did before.
+
+**The task's core approach could not be completed - an honest, more
+precise statement of the open problem than before, not just another
+negative.** The actual value-storage location for Master Transpose/Fine
+Tune/Click Level in 1.3.0 was not found (a tempting local coincidence,
+byte `0x0c` and bytes `0x64 0x32` near each other at `0x75432`-`0x75438`,
+
+- was directly checked and explicitly ruled out as chance, not a real
+match, per this project's own standard against treating numeric
+coincidence as a signal). Because this anchor couldn't be resolved,
+"measure growth of an existing structure" has no existing structure to
+measure.
+
+**A new, independent generic structural test, extending §40/§42/§44's
+specific stride-6/zero-tail search to every stride 2-16 and every tail
+width, with an entropy filter to exclude trivial filler.** Correctly and
+uniquely recovers the known 1.2.0.8 table in calibration (among 31
+candidate runs file-wide); finds **zero** matches at the old record
+shape anywhere in 1.3.0 - the 8th independent test across two sessions
+to reach this same conclusion. Of 20 non-trivial candidates surfaced in
+1.3.0, every one individually inspected resolves to an already-known
+structure class (KSEG0 pointer tables, the already-catalogued 28-byte
+`0x1D`/`0x9D` fingerprint structure) or an unrelated sound-engine lookup
+table - none plausibly holds 80 (or any GM-note-plausible) parameter
+values.
+
+**A plausible, explicitly-unconfirmed architectural hypothesis worth
+recording, not claiming**: given that eight independent byte-pattern
+searches across two sessions have now failed to find any static
+default-value table for these settings anywhere in Main's image, and
+that a "Reset System Parameters to Defaults" UI action is confirmed to
+exist, it's plausible these defaults are set via individual immediate-
+load MIPS instructions inside a reset-to-defaults function (`ori`/
+`addiu` with small immediates) rather than a contiguous data array -
+which would structurally explain why no data-pattern search, however
+thorough, can ever find them. This cannot be verified without
+disassembly at a confirmed code base address - reinforcing rather than
+contradicting the project's standing recommendation that ICSP hardware
+access is the most reliable remaining path.
+
+**Where this leaves things**: the missing-values question remains open,
+but is now stated more precisely - not "where did the old table move
+to" (there may be no table to move, if defaults are code-embedded
+immediates) but "does Main even use static default-value arrays for
+this class of setting anymore, post-1.3." The ~45KB consolidated UI-
+text-pool discovery is a real, standalone architectural fact about the
+OS 1.3 reorganization, independent of whether the value-storage question
+is ever resolved computationally.
