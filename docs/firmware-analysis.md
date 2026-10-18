@@ -5252,3 +5252,81 @@ relying on manual reading for them; locate the 5 missing scale names;
 cross-check the zone's internal binary sub-stretches against the
 already-published 20-byte/28-byte structure signatures to confirm (or
 correct) the inspection-based identification.
+
+---
+
+## 58. The PC-relative jump-table hypothesis tested and rejected - both architecturally and numerically, across all 6 versions - the base-address problem is now about as computationally exhausted as it can get (2026-10-18)
+
+Direct test of the single genuinely-untested hypothesis flagged in
+§21: that the two confirmed real jump tables' entries might be PC-
+relative deltas rather than flat absolute pointers, a real documented
+GCC/MIPS alternative never actually tried. Explicitly scoped to avoid
+re-sweeping the already-exhaustively-closed absolute-pointer model
+(§21/§22).
+
+**Re-derived both known jump tables from scratch in all 6 versions**,
+using a capstone-based structural idiom verifier (range-check → index
+scale → table-base construction → load → jump, tracked via register
+dataflow, not text matching) rather than trusting cached values -
+exactly reproduces §14's published table 1 numbers (file offsets, case
+counts, computed addresses) digit-for-digit in all 6 versions, and
+§5.6's table 2 numbers exactly for 1.5.0.2. **A new, previously-
+undocumented data point found along the way**: table 2 (the `-0x5c`
+SysEx-dispatch-shaped table) also exists in **1.4**, at 6 cases (vs.
+1.5.0.2's 25), same `-0x5c` marker - suggesting this specific dispatch
+grew from 6 to 25 cases between Jan 2015 and Aug 2017. Not found in
+1.1.3/1.2.0.8/1.3.0/1.3.0.6 by the same strict idiom - not chased
+further, since the task's primary target (table 1) is confirmed in all
+6.
+
+**The PC-relative-delta model tested directly, against all 4 plausible
+reference-point conventions (table start, one-past-last-entry, the
+dispatching `jr`'s own file offset, the range-check guard), for both
+signed and unsigned entry interpretation, across all 8 real table
+instances (table 1 x 6 versions, table 2 x 2 versions) - a clean
+negative, the same kind of result the task anticipated as legitimate.**
+No reference-point hypothesis validates meaningfully for any single
+version, let alone jointly across all 6 (the handful of 1/40-4/40 hits
+are the same small-coincidence-rate noise already catalogued
+repeatedly elsewhere in this document, §18/§21/§22). Signed vs.
+unsigned interpretation gave identical results everywhere - not the
+source of the negative either.
+
+**A mechanical fact makes the numerical result unsurprising, and is
+itself worth recording**: entry magnitudes are enormous relative to the
+524,609-byte file (≤19 bits of useful delta range) - e.g. table 1's
+1.5.0.2 entries range from -2,147,426,288 to +1,907,308,676; table 2's
+first entry is `0x00820E12` (≈8.5M, already documented in §5.6). Since
+every candidate reference point is itself under 524,608, **the choice
+of reference point is numerically irrelevant** - it can never be large
+enough to rescue entries 3-4 orders of magnitude outside any plausible
+in-file range, consistent across all 8 table instances.
+
+**The more decisive finding is architectural, not arithmetic: the
+compiled idiom structurally cannot be encoding PC-relative deltas at
+all.** In every one of the 8 real instances found, the final two
+instructions are `lw $reg,0($addr); jr $reg` with zero intervening
+instructions (confirmed exact 4-byte gap in all 8 cases). `jr`/`jalr`
+on MIPS jumps to the literal register value with no arithmetic of its
+own - a genuine PC-relative delta table requires an explicit recombine
+instruction (e.g. `addu $t,$t,$ref`) between the table load and the
+jump, to add the delta back to a base. None of the 8 real instances
+have this. A dedicated completeness scan for exactly this alternative
+shape (`lw` → `addu`/`add` → `jr`) found **zero matches anywhere in any
+of the 6 files**, file-wide, not just near the known tables - extending
+§5.6's single-version "PC-relative... clean negative" end-note to all
+6 independently-built versions with a purpose-built, targeted idiom
+search.
+
+**Where this leaves things**: both standard GCC/MIPS O32-ABI jump-table
+encodings - flat absolute pointers (§21/§22, exhaustively closed across
+the entire chip-confirmed address space) and PC-relative deltas (this
+session, closed both numerically and architecturally) - have now been
+tried against two real, idiomatically-genuine dispatch tables, across
+all 6 independently-compiled firmware versions, and both fail. This
+reinforces rather than weakens the standing recommendation: the ICSP
+hardware path (§7 item 5) is the one approach that doesn't depend on
+guessing an addressing model, and no further brute-force encoding
+variant is obviously worth trying without a genuinely new angle - the
+base-address problem is now about as thoroughly exhausted
+computationally as this project's own standards can establish.
