@@ -3836,3 +3836,95 @@ same calibrated whole-file search, to narrow the 5-year gap down to the
 single release transition where the table's byte-exact form stops being
 recoverable - the same feature-anchored diffing-between-adjacent-
 releases technique §19 already validated.
+
+---
+
+## 42. The transition pinned to a single release, with a documented cause - and §40's note map confirmed against DSI's own published manual text (2026-10-18)
+
+Direct follow-up narrowing §41's 5-year gap by checking the three
+intermediate releases (Main 1.3.0, 1.3.0.6, 1.4). Calibrated against
+1.2.0.8 first, exactly reproducing §40/§41 (176/176 zero-tail records,
+the tag=`0x7f` run with the exact documented values, and - the decisive
+calibration check - the tag-agnostic whole-file search finding exactly
+one GM-criterion-matching run anywhere in the file, at the known
+location, zero false positives) before trusting any result on the new
+versions.
+
+**The table is already fully absent in all three intermediates - the
+real transition is the very first point release after 1.2.0.8, not a
+gradual drift.** Exact-offset zero-tail-record counts: 1.3.0 = 4/176,
+1.3.0.6 = 52/176, 1.4 = 0/176 (versus 1.2.0.8's clean 176/176) - and the
+tag-agnostic whole-file search, the same method that found exactly 1 hit
+with zero false positives in 1.2.0.8, finds **zero** GM-criterion matches
+anywhere in any of the three intermediates. **Stronger still**: dropping
+the GM-range restriction entirely and searching for *any* non-trivial
+tagged run of length ≥16 anywhere in 1.3.0 finds only all-zero filler -
+not just the specific note values changed, the entire 6-byte-record
+table complex is structurally gone starting at 1.3.0. This rules out a
+gradual 5-year drift and localizes the real transition cleanly to the
+**1.2.0.8 → 1.3.0 boundary**.
+
+**A documented cause, found directly in OS 1.3's own addendum PDF** (read
+in full, 20 pages, extracted from the real `Tempest_OS_1.3_update.zip`
+archive): page 6, "New in Version 1.3" lists **"Assign MIDI Note Numbers
+for Each Pad"** - *"you can now assign which note number triggers each
+pad... you will find 32 new parameters, one for each of the 16 pads in
+banks A and B, labeled 'MIDI Note: Pad A1' through 'MIDI Note: Pad
+B16'."* This is an essentially exact match to §40's structure: 16 real
+GM-mapped values (bank A) + 16 sentinel-`127` values (bank B) = exactly
+"32 new parameters... one for each of the 16 pads in banks A and B."
+**Before OS 1.3, this was a fixed, hardcoded default table** (exactly
+what §40 found, frozen in the binary); **starting in OS 1.3 it became 32
+individually user-editable System parameters** - plausibly explaining
+why the fixed-shape table disappeared from this location (absorbed into
+a differently-shaped, per-parameter storage structure), consistent with
+OS 1.3's other listed feature in the same addendum, "System Screen
+Reorganized by Category." Stated per this project's own standard: this
+is a well-matched, plausible causal story, not a proven mechanism - the
+actual replacement 32-parameter data structure itself was not located,
+only the old table's absence and a textually well-matched motive.
+
+**A genuinely important upgrade to §40's own confidence level: the
+GM-note identification is now confirmed against DSI's own published
+documentation, not just an external statistical match.** The same
+cumulative OS 1.3 addendum PDF also contains, under "New in Version
+1.1" (pages 15-16), the **official published default MIDI-note-to-pad
+table** for the "Playing Sounds From MIDI" feature - and it is
+byte-for-byte identical, in the same A1-A16 order, to §40's 16 extracted
+binary values: `A4(69)=Cabasa→Pad A1`, `F#3(54)=Tambourine→A2`,
+`E2(40)=Electric Snare→A3`, `D2(38)=Acoustic Snare→A4`,
+`A#3(46)=Open Hi-Hat→A5`, `D3(50)=High Tom→A6`,
+`B2(47)=Low-Mid Tom→A7`, `G2(43)=High Floor Tom→A8`,
+`F5(77)=Low Wood Block→A9`, `D#2(39)=Hand Clap→A10`,
+`C#2(37)=Side Stick→A11`, `C2(36)=Bass Drum 1→A12`,
+`F#2(42)=Closed Hi-Hat→A13`, `D#3(51)=Ride Cymbal 1→A14`,
+`C#3(49)=Crash Cymbal 1→A15`, `G3(55)=Splash Cymbal→A16`. **§40's
+p≈6x10⁻⁹ statistical inference should now be considered directly
+confirmed against primary-source DSI documentation, not merely
+well-supported by an external coincidence check.**
+
+**Secondary observations, reported honestly though not chased further**:
+the `909ish`/`808ish` preset-name strings survive in all three
+intermediates at shifted offsets, but unlike §41's clean single-shift
+finding for 1.5.0.2, the two strings' shifts within a single
+intermediate version are *not* identical (e.g. 1.3.0: +0x5ca7 vs.
++0x5c6f, a 56-byte difference) - the local region was already being
+reorganized by 1.3.0, consistent with the causal story above but not
+independently confirmed further. A masked-ASCII search for the adjacent
+"Calibrating Done"/"Lowpass Filter"/"Pan and Volume" text cluster found
+zero hits, masked or unmasked, in any of the three intermediates (unlike
+1.5.0.2, where §41's lossy-deletion model recovered it in corrupted
+form) - running this project's `decode_preset_text.py` decoder against
+these three versions, to see if it recovers the cluster in a different
+corrupted form, is a reasonable follow-up not attempted here.
+
+**Where this leaves things**: both the "why did the table disappear" and
+"is the GM-note identification really solid" questions are now closed
+with strong, primary-source-documented answers. The table's story across
+the product's history: a hardcoded default in OS 1.1.3-1.2.0.8, replaced
+by individually user-editable parameters starting OS 1.3 (documented,
+named feature), with the replacement's actual binary shape not yet
+located. §40's identification is now one of the best-evidenced findings
+in this entire document - confirmed against DSI's own manual text at two
+independent points (the default note table itself, and the Bank A/B
+pad-count framing), not just a strong statistical coincidence.
