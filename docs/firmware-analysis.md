@@ -4989,3 +4989,73 @@ already-identified noise-artifact failure mode); whether the size growth
 at the OS 1.3 boundary is mechanistically tied to the other documented
 OS 1.3 content growth, or coincidental timing; sweeping Panel/Voice/Sam
 across their own full version histories rather than one version each.
+
+---
+
+## 55. The 20-byte structure's VAL field is confirmed NOT a Program Flash pointer - a tautological test caught and explained, with a real alternative hypothesis (2026-10-18)
+
+Direct follow-up resolving §54's flagged open question: is the 20-byte
+structure's recurring `VAL` field a literal Program Flash pointer?
+Tested with the exact rigor §54 called for, explicitly designed to
+avoid repeating the noise-artifact failure mode §27 already identified
+for a similar hypothesis on the unrelated 28-byte structure.
+
+**A subtler, more fundamental problem than noise was found first: the
+naive "falls in Program Flash range" test is tautological for this
+specific structure, not just weak.** The record's own fixed template
+bytes (`06 9d`, immediately following each `VAL`) mean that reading
+`[VAL][06][9d]` as little-endian 32-bit always produces `0x9D06xxxx` -
+unconditionally inside the confirmed `0x9D000000`-`0x9D07FFFF` range for
+*any* possible `VAL` value, regardless of content. The apparent "in-range"
+confirmation carries zero information about `VAL` specifically - it's
+guaranteed by the record format's own fixed tag bytes, a more subtle
+version of exactly the false-confirmation shape §27 warns against.
+
+**The resolved targets do land in recognizable content - but this is
+confirmed, decisively, to be a density artifact, not a real reference.**
+Computing `LE32 - 0x9D000000` for all 7 confirmed-site occurrences across
+4 builds resolves every single one into the **same already-documented
+OS-1.3 settings-text pool** (§45/§46/§53), regardless of each build's
+completely different literal `VAL` value - recognizable parameter-label
+vocabulary (`Mode`, `Glide Mode`, `Choke`, `Voice Assign`, `Quantize`,
+etc.) at every target. But alignment is inconsistent (only ~3 of 7 land
+cleanly at a label boundary; the rest land mid-word), and **the decisive
+control confirms this is chance placement in dense text, not a real
+pointer scheme**: scanning *every* literal `06 9d` byte-pair occurrence
+anywhere in each file (256-491 occurrences per build, not just the 7 at
+confirmed sites) and applying the identical arithmetic shows **94.1%-
+97.8% of ALL such occurrences, real structure or not, resolve to
+equally "plausible-looking" content** - because the fixed destination
+window the tag arithmetic always lands in (`0x060000`-`0x070000`) is
+itself uniformly text-dense (36%-78% printable in every 4KB bucket,
+every build). The test has essentially zero power to distinguish this
+structure's `VAL` from any other random `06 9d` occurrence in the file.
+
+**The strongest test - direct code consumption - comes back a clean,
+exhaustive negative.** Decode density around all 4 confirmed sites
+(45.2%-66.9%) sits well below Main's established real-code baseline
+(81.6%-84.0%, per §51), independently reproducing §51's "not real code"
+conclusion. A search of **every** `lui`+`addiu`/`ori` same-register pair
+(this project's own established idiom for a computed absolute address)
+in the entire decoded image of all 4 builds, for one that computes any
+of the 7 specific candidate target addresses: **zero matches, in any
+build.** No code anywhere in Main's firmware actually loads or computes
+any of these values as an address.
+
+**A plausible, explicitly-unconfirmed alternative identity, offered
+honestly rather than forced**: `VAL` is strikingly non-diverse within a
+single build (1.3.0.6's 7 hits all share one value; 1.4's 2 hits share
+one value; 1.5.0.2's 23 hits are 20/2/1 across just 3 values) but
+completely different across builds - a pattern better fitting a build-
+specific constant (a version stamp or checksum) than a genuine per-
+record pointer table addressing distinct content, though this specific
+alternative wasn't independently verified here.
+
+**Where this leaves things**: a clean, decisively-tested negative that
+also surfaces a real methodological lesson - a fixed template tag
+adjacent to a variable field can make a naive address-range test
+tautological, a subtler trap than ordinary statistical noise, worth
+checking for before trusting any future "falls in a valid address
+range" claim on a record format with fixed neighboring bytes. The
+20-byte structure's actual identity remains as open as §51/§54 left it;
+this specific sub-question (pointer or not) is now resolved, not open.
