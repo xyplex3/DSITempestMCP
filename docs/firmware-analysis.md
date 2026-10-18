@@ -3523,3 +3523,82 @@ period is a fast, decisive way to distinguish "known tabular periodicity
 bleeding into a pixel-grid rendering" from genuine 2D image content (real
 image content wouldn't collapse to noise under byte-shuffling, and
 wouldn't peak exactly at the data's own unrelated record stride).
+
+---
+
+## 38. The two clean stretches in Main's `0x7652c` blocks are two more sightings of §27's unidentified 28-byte periodic structure (2026-10-18)
+
+Direct follow-up to §36's side-observation: the growth block's 486-byte
+and the shrink block's 491-byte completely-clean (no `0x00`/`0x80`)
+stretches, now pinned to exact offsets - growth `0x7676a`-`0x76950`,
+shrink `0x77373`-`0x7755e` - and identified by three independent
+measures.
+
+**Both match §27's already-documented, still-unidentified 28-byte
+periodic structure, not code and not text.** Control-normalized
+autocorrelation shows a decisive lag-28 peak in both (0.8537 and 0.8553,
+both far above a 30-trial same-size random control's maximum of 0.55 and
+0.32 respectively) - the exact same signature §27 first found in a
+completely different build and location. The byte-value fingerprint
+matches §27's documented signature too: `0x1D`/`0x9D` and `0x06`/`0x86`
+both strongly elevated (11-32x over baseline) and paired near 1:1 with
+each other in both stretches, same as §27. Reshaping each into 28-byte
+rows reveals **11 consecutive byte-for-byte identical rows** in both -
+actually a sharper, more repetitive instance than §27's original find
+(which showed a slowly-incrementing counter column, not verbatim-
+identical rows) - worth noting as a variant within the same structure
+class, not a different one.
+
+**The code hypothesis was directly and decisively rejected, with a
+stronger-than-density test.** The shrink stretch's raw capstone decode
+density (73.77%) is nominally *above* this build's real-code baseline -
+but its disassembly is dominated by `jal`/`j` instructions targeting
+absolute addresses 23-41MB beyond the entire 524,609-byte file,
+categorically impossible on this 512KB-flash chip regardless of any base-
+address guess: **0 of 49 call targets land in-file-bounds**, a decisive,
+base-address-independent negative stronger than the density number alone.
+Both stretches also show FPU/coprocessor opcodes (`ldc1`/`ldc2`/`swc1`/
+`lwc1`/`bposge32`) on a chip confirmed to have no FPU - the same
+disqualifying pattern already established for noise elsewhere in this
+document.
+
+**Mapped the full extent of the periodic-structure zone in each block**,
+not just the clean sub-stretch: the growth block's zone runs roughly
+`0x7652c`-`0x76960` (autocorrelation rising from 0.57 to a peak of 1.000
+at `0x76784`, then decaying to a ~0.14-0.23 noise floor for the rest of
+the 3,927-byte block) - a single contiguous cluster. The shrink block
+shows it in (at least) two separate sub-zones instead: a moderate one at
+`0x766ee`-`0x76820` and a much hotter one at `0x7733c`-`0x77468`
+(containing the 491-byte clean run) - the periodic content here isn't one
+contiguous table, unlike the growth block.
+
+**The two blocks' actual content is unrelated to each other, despite the
+shared `0x7652c` start offset.** Direct byte comparison over the
+overlapping 3,927-byte span: only 9.88% match, at chance level for a
+byte alphabet this skewed. Neither is a substring of the other, and the
+two stretches' own dominant repeated 28-byte rows are completely
+different literal bytes (same period/fingerprint class, different actual
+content). **`0x7652c` itself is not a meaningful content boundary beyond
+what §19/§36 already established** (the edge of used-flash
+growth/shrink for these specific version pairs) - more plausibly, this
+unidentified 28-byte structure is something the build tooling tends to
+place near the growing edge of used flash generally, consistent with
+§26's existing observation that it recurs across different builds and
+locations, not because this offset is itself special the way `0x20000`
+was investigated (and ultimately rejected as an object-file boundary) in
+§30.
+
+**Where this leaves things**: this is now the 3rd and 4th confirmed
+sighting of §27's structure across the corpus (after the original
+1.5.0.2-era sighting and §26's), closing out §36's "what are these clean
+stretches" open observation with a well-evidenced non-code, non-text
+answer rather than leaving it unexplained. The structure's actual
+identity/purpose remains exactly as open as §27 left it - no new identity
+hypothesis was tested or needed here, since the match to the known
+structure is already conclusive. Concrete next step if continued: check
+whether any of the (now four) known sightings share literal content
+overlap with each other, not just the same structural signature - if
+none correlate even pairwise, that would be a stronger, broader
+confirmation that this is a recurring *build-tool artifact pattern*
+rather than any single meaningful data table, worth stating explicitly
+either way.
