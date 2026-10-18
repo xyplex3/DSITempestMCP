@@ -3130,3 +3130,106 @@ structured records actually encode, what anchors the text zone's
 insertion period, and what the fingerprint-vocabulary bracketing around
 the `0x70100` text cluster means (plausibly framing/tag metadata around
 short embedded strings - flagged, not tested further here).
+
+---
+
+## 33. The deletion-mechanism period resolved: exactly 7, anchored to absolute file position in 5 contiguous phase blocks - the real breakthrough §31 was missing statistical power for (2026-10-17)
+
+Follow-up to §31, using §29's 454-name official dictionary to match far
+more words than §31's 8 hand-picked examples. A proper sequence-alignment
+matcher (cost-scored, accepting only matches fully explained by the
+already-known mechanism or a single documented space-drop) found **78
+confident word matches** (cost ≤1) yielding **83 insertion/loss events** -
+roughly 10x §31's sample size, with 6 spot-checked directly against raw
+hex bytes to confirm the matcher's output, not just trusted blind.
+
+**The period is exactly 7, not "roughly 6-7" - a real breakthrough over
+§31's estimate.** Of the 78 matched words, 14 have two detected events;
+**in every single one (14/14), the gap between them is exactly 7**, with
+zero exceptions. §31's "roughly every 6-7 characters" was a reasonable
+estimate from n=8 that undersold how exact this actually is.
+
+**§31's own "abs offset mod 7 is fairly flat" conclusion is directly
+overturned by the larger sample.** The distribution of absolute offset
+mod 7 across all 83 events is strongly non-uniform (`{0: 42, 1: 0, 2: 3,
+3: 4, 4: 0, 5: 8, 6: 26}`, chi-square ≈130 against a uniform-distribution
+critical value of ~22.5 at p=0.001) - residues 0 and 6 alone account for
+82% of all events, and residues 1 and 4 never occur at all. §31's
+negative on this specific test was a real finding at the time, just one
+that eight examples couldn't resolve correctly.
+
+**But it's not one global phase across the whole zone - it's 5 contiguous
+"phase blocks," each internally perfect, with discrete non-multiple-of-7
+jumps between them:**
+
+| Residue | File range | Example words | Count |
+|---|---|---|---|
+| 2 | `0x6e55f`-`0x6e650` | Grain Granny, Cut Snare | 2 |
+| 5 | `0x6e934`-`0x6ec39` | Half Edge ... Silver HH | 8 |
+| 0 | `0x6ed4d`-`0x6f0f6` | LinnDrum Ride ... Cabasa B | 41 (dominant block) |
+| 3 | `0x6f311`-`0x6f4e2` | 808ish Clave, Outta Time | 2 |
+| 6 | `0x6f52e`-`0x6f7af` | FmtAOh ... VS 92 | 26 |
+
+The block boundaries line up with the same category boundaries §25 and
+§29 already catalogued qualitatively (a toms/cowbells/claps cluster
+giving way to a VS/organ/bell cluster, etc.) - consistent with a counter
+that runs continuously within one category sub-table, then gets reset or
+shifted by a non-multiple-of-7 amount at a boundary. The exact bytes at
+each transition couldn't be pinned down (no confident dictionary match
+exists in the gaps between blocks) - what structurally happens at a
+boundary remains an open, specific next question, not resolved.
+
+**Confirmed this is a real absolute-position anchor, not an artifact of
+word length or word-start position.** Word-start offsets are themselves
+close to flat across all 7 residues (counts 10/13/15/8/14/14/4 over the
+78 words); within the dominant residue-0 block, each word's first event
+lands at a different relative position (1 through 6 characters in) -
+varying specifically so the *absolute* position lands on residue 0 or 6
+every time. This is exactly the kind of result §31 was testing for and
+couldn't find at n=8 - the anchor really is tied to absolute file
+position within a block, confirmed only now with real statistical power.
+
+**A complementary "true character count since zone start" test (raw
+offset minus cumulative control-byte count) gives a flat distribution at
+every modulus tried (6/7/8/13/14/28)** - ruling out "the Nth real
+character since the very start of the 4853-byte zone" as the anchor too.
+Consistent with the per-block model above: each block carries its own
+local counter, not one counter spanning the whole zone.
+
+**A genuinely new, solid resolution of §31's open insertion-vs-loss
+question: the raw control-byte value predicts the outcome.** `0x80`
+events destroy a character 97.8% of the time (44/45); `0x00` events are
+mixed - 65.8% destroy a character, 34.2% are purely lossless (13/38).
+Fisher's exact test on the resulting 2x2 table gives p≈0.00016 - highly
+significant. `0x80` reads as close to a dedicated "destroy a character"
+code; `0x00` is multi-purpose. This also sharpens §31's rough "about a
+third pure insertions" estimate down to a more precise 16.9% (14/83) with
+the larger sample.
+
+**Destroyed-character identity reconfirms §31's "no glyph-specific
+pattern" rather than strengthening it**: of 69 destroyed characters,
+34.8% are vowels (roughly proportionate to English text), 10.1% are
+spaces, 21.7% are uppercase - close to but not stronger than §31's
+zone-wide 25.4% uppercase figure. No single character value dominates.
+
+**Adjacency to §27/§32's structured zone, noted but not resolved**: the
+last confidently-matched events (`VS 85`/`90`/`91`/`92`, `0x6f776`-
+`0x6f7ae`) fall right at the leading edge of what §32 now precisely
+bounds as the structured zone (`0x6f804` onward) - too few confident
+matches exist deep inside that zone to test whether the two mechanisms
+interact there. A concrete, specific open next step, not an assumption
+either way.
+
+**Where this leaves things**: this is the deepest and most statistically
+grounded characterization of the deletion mechanism yet - the period is
+now a known exact constant (7), the anchor is confirmed as absolute file
+position organized into 5 category-aligned phase blocks (not word-
+relative, not a single zone-wide counter), and the insertion-vs-loss
+split has a real, significant predictor (the control byte's own value).
+Genuinely still open: what causes the phase jump at each block boundary,
+and whether this mechanism extends into or interacts with §27/§32's
+adjacent structured zone. Concrete next steps if continued: hand-check
+the ~9 excluded ambiguous (cost 6-7) matches, which might extend the
+event set further; pin the exact transition bytes at each of the 4 phase
+boundaries; directly test for confident name matches inside the
+structured zone itself.
