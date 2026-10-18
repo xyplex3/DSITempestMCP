@@ -5059,3 +5059,80 @@ checking for before trusting any future "falls in a valid address
 range" claim on a record format with fixed neighboring bytes. The
 20-byte structure's actual identity remains as open as §51/§54 left it;
 this specific sub-question (pointer or not) is now resolved, not open.
+
+---
+
+## 56. The area past the 20-byte structure resolves to two already-known phenomena, not a new one - plus a new preset-text transcript and a promising lead on Main's used-flash edge (2026-10-18)
+
+Direct follow-up characterizing the area §51 flagged only in passing
+("non-printable, letter-heavy repeating F/G pattern") immediately past
+the 20-byte structure's boundary in Main 1.5.0.2 (`0x747a0` onward).
+
+**Not a new structure: a 5th sighting of the already-catalogued,
+still-unidentified 28-byte periodic structure (§27/§38/§39), stronger
+than any prior sighting.** `0x747a0`-`~0x75500` (3,424 bytes): lag-28
+autocorrelation elevation 15.15x over a 500-trial shuffled control (0/500
+trials came close) - stronger than §27's original 4.8x and in the range
+of §38's strongest sites. Harmonics behave correctly (lag 20/24/32/36/40
+flat at ~0.13-0.17, lag 28 alone spikes), ruling out any 84-vs-28
+confusion. Found 7 consecutive identical 28-byte rows, one specific row
+recurring 11 times total. **Directly resolves §51's own "F/G pattern"
+question**: one column cycles `0x46`/`0x47`/`0x48` ('F'/'G'/'H') as a
+slow +1 counter - exactly the same already-documented counter-column
+behavior §27 first found, landing in printable-ASCII range for this
+site's specific values; not a new toggle-bit phenomenon, and confirmed
+directly in raw hex that it's not a literal 2-byte `46 47` alternation
+either. Decode density 43.3% against a 67.7% in-file code baseline, with
+FPU-opcode contamination on this confirmed FPU-less chip - decisively
+not code, matching every other sighting. Zero literal row overlap with
+§27's or §38's sites, consistent with the already-established "same
+signature, different payload per site" pattern (§39), not a reason to
+doubt the match.
+
+**Immediately after that: a newly-characterized sighting of the lossy
+preset-text mechanism, with genuinely new, never-before-transcribed
+content.** `~0x75500`-`0x7652c` (~4,140 bytes, ending exactly where
+§38's growth-block sighting begins): period-7 phase chi-square 151.9
+(far above the 22.46 critical value, decisive phase anchoring), control-
+byte density 27.0% (matching §31's originally-characterized zone's
+31.9%). Clean readable text begins at `0x7557d`, recovering a long run
+of drum/percussion/noise sample names not previously transcribed
+anywhere in this document: `White Noise`, `Pink Noise`, `Green Noise`,
+`4K Noise`, `Cicada`, `Buzzed`, `Chain Link`, `Grinder`, `Tight Boom`,
+`Hollow Thud`, `Slap Kick`, `Thwang Kick`, `Metallic`, `Trap Hat`,
+`Studio Hat`, `LinnDrum HH`, `LM-1` closed/open, `Tri HiFi`, `Short
+Triangle`, `Noisy Bell`, and more. One honest, unresolved discrepancy:
+this zone's max clean run is 17, notably higher than §31's hard ceiling
+of 6 for its own originally-characterized zone - same mechanism class
+(decisive chi-square match, same two control-byte values), but a
+different local insertion rate, not investigated further.
+
+**Net result: §51's "F/G pattern" was simply a first glance at two of
+this project's own already-recurring phenomena sitting adjacent to the
+20-byte structure, not a third new kind of content.** The region chains
+directly into territory the doc already documents - §38's growth-block
+28-byte-structure sighting at `0x7652c` was independently reproduced,
+confirming continuity.
+
+**A promising, unexplored lead found incidentally, well outside this
+task's scope - not characterized in depth, flagged for a future
+session.** Scanning onward, a long, dense run of literal `0xFF` begins
+around `0x797a0` and continues to the file's end: 89.3% of the remaining
+27,041 bytes are literal `0xFF`, with small scattered non-`0xFF` islands,
+several recurring at suspiciously regular ~1024-2048-byte spacing
+(possibly a per-flash-row marker or checksum byte, not characterized).
+This has the classic signature of erased/unprogrammed flash and looks
+like Main's own analog of §28's already-documented Voice used-flash
+boundary - a question that doesn't appear to have been asked for Main
+specifically anywhere in this document as of §55.
+
+**Where this leaves things**: closes out §51's flagged area cleanly -
+nothing new, just two already-understood phenomena recurring, plus a
+genuine content addition (new preset names) and a real new lead (Main's
+own used-flash edge, never directly characterized the way §28 did for
+Voice). Concrete next steps if continued: curate the new preset-name
+text against §29's 454-name manual dictionary, the way §46 did for the
+second UI-text zone; run the exact-boundary, cross-version sweep for
+Main's used-flash edge near `0x797a0`, mirroring §28's Voice
+methodology; investigate the regularly-spaced single-byte deviations in
+the `0xFF` tail region.
