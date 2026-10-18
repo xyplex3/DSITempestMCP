@@ -2938,3 +2938,111 @@ genuinely unidentified. The ICSP hardware path (§7 item 5) is unaffected
 by this result and remains the only path that resolves the base-address
 problem outright; this result only narrows what `0x20000` *isn't*, not
 what it is.
+
+---
+
+## 31. The lossy zone's deletion mechanism: characterized in real depth for the first time - provably not noise, but not fully resolved either (2026-10-17)
+
+Follow-up to §23/§25's repeated observation that the lossy preset-text
+zone (`0x6e50b`-`~0x6f800`) loses real characters mid-word, never
+previously investigated as its own question. This session did the direct
+byte-level work.
+
+**Provably not random corruption - a hard, deterministic structural
+ceiling exists.** The longest run of consecutive printable-after-masking
+bytes anywhere in the 4853-byte zone is exactly 6, with zero exceptions
+(233 fragments hit exactly length 6; none ever reach 7). A Monte Carlo
+control (2000 trials, same byte/dropout counts, uniform-random placement)
+gives an expected max run of ~20 and a minimum observed of 13 across all
+2000 trials - a ceiling of 6 under random placement occurred in **0 of
+2000 trials**. This statistically rules out ordinary bit-corruption or RAM
+noise as the cause.
+
+**Every single dropout byte, with no exceptions, is literally `0x00` or
+`0x80`** (880 and 670 occurrences respectively, out of 1550 total
+dropouts in the zone) - no other byte value ever appears at a dropout
+position. Generic corruption would spread across many byte values; two
+specific sentinel values only is strong evidence of a deliberate control
+byte being misread as literal text, not noise.
+
+**Every encoding scheme this project has already confirmed exists
+elsewhere was independently re-tested against this zone specifically, at
+every phase, and all are clean negatives**: the wire-protocol collector-
+first scheme (leading and trailing collector, group sizes 7 and 8, all 8
+phases - reproduces §23's negative via independent code, not just citing
+it); plain contiguous 7-bit bit-packing (both bit orders, all 8 offsets);
+a globally-anchored fixed-period byte-deletion lattice (period 7 or 8, any
+phase - and manually shown to actively *destroy* already-correct text,
+e.g. turning the confirmed "Flam" into "Flm"). **Plain per-byte
+`byte & 0x7F` masking remains the best available decode of this zone**,
+independently reconfirmed rather than just inherited from §23.
+
+**Byte-level accounting of 8 confirmed real preset names reveals the real
+mechanism: a periodic insertion of a non-text control byte, which
+*sometimes* (not always) also destroys one adjacent true character - not
+one uniform rule.** Of the insertion events examined, roughly a third are
+pure, lossless insertions (the word is fully recovered by simply deleting
+the control byte - e.g. `GrainGranny` and `Crunch` both decode perfectly
+once the one stray `0x00`/`0x80` is stripped), while the rest coincide
+with a genuine, irrecoverable loss of exactly one true character (e.g.
+`BitReduction` loses its `i`; `Heavy Open` loses its `O`; `Distorted
+Bump` loses both `r` and `m`). **This single finding resolves the
+"insertion vs. deletion" ambiguity left open since §23**: it's always an
+insertion of one control byte; whether a real character also vanishes
+depends on something not yet identified, not on a second, separate
+mechanism.
+
+**A clean negative for the font/charset hypothesis.** The distinct lost
+letters across confirmed examples (`O`, `H`, `r`, `m`, `i`, `t`, `e`) never
+repeat and span both vowels/consonants and capitals/lowercase - flat, not
+concentrated on any specific glyph. Relative position of the loss within
+its word also ranges widely (~23%-86% through), ruling out a fixed-fraction
+rule too.
+
+**A real, measurable sub-pattern exists but isn't the whole story: word-
+initial capitals following an internal space are over-represented as
+victims.** Zone-wide, the character immediately after a dropout is
+uppercase 25.4% of the time versus 24.3% lowercase - a real skew given how
+much rarer capitals naturally are in running text. The specific 3-byte
+signature `[char]-[CTRL]-[literal space]` (a vanished capital standing
+right after a space) occurs 40 times, and in all 10 sampled instances the
+following byte is a plausible second-word capital (`C`, `S`, `T`, `H`,
+`B`, `L`, `D`). But this coexists with equally real interior-consonant/
+vowel losses unrelated to any space, so it's a frequent sub-pattern, not a
+complete explanation.
+
+**The max-run-of-6 ceiling explains itself once insertion events (not just
+loss events) are counted**: a non-text byte gets inserted roughly every
+6-7 true characters regardless of whether that particular insertion also
+destroys a letter - sufficient on its own to produce the hard ceiling.
+**But the ~7-character period's anchor couldn't be pinned down** - tested
+against absolute file offset mod 7 (fairly flat, no dominant residue) and
+per-word relative position (23%-86%, not fixed) - the period is locally
+real (never more than 6 clean bytes in a row, anywhere in the zone) but
+its phase drifts unpredictably span to span. What it's actually counting
+(a character index since the table start? since each name's own start?
+an unrelated counter from the original authoring tool that happens to
+collide with this region periodically?) remains genuinely open.
+
+**Two smaller, confirmatory side-findings**: the clean-table/lossy-zone
+boundary at `0x6e50b` is sharp, not gradual - density drops immediately
+from the clean table's 0.70-0.87 to the lossy zone's 0.53-0.73 right at
+the boundary with no decay ramp, supporting "two regions meeting at a hard
+edge" over "one encoding gradually degrading." Density is roughly flat
+across the whole 5.4KB zone (0.615-0.714 throughout, only a mild dip in
+the final ~700 bytes), with no correlation found to §27's unrelated
+28-byte structure.
+
+**Where this leaves things**: this is the deepest direct characterization
+of the deletion mechanism to date - provably not noise, narrowed to a
+specific two-value control byte with a real (if unanchored) ~7-character
+period, with the insertion-vs-loss ambiguity resolved into "always
+insertion, sometimes also a loss, cause of that split unknown." §25's
+"underlying mechanism... remains unidentified" is now more precisely
+"characterized in depth but not fully resolved" - what the control byte's
+own semantics are, what anchors its period, and why insertion is
+sometimes lossless and sometimes not, are all still open questions. No
+further concrete next step identified for this specific angle beyond what
+was already tried here; the ICSP hardware path remains the standing
+recommendation for anything requiring ground-truth resolution rather than
+further static analysis.
