@@ -390,6 +390,50 @@ genuinely different wire or escape format - not investigated further this
 session given time already spent; a real open question if picked up again,
 not a dead end that's been ruled out.
 
+**Follow-up (2026-10-17): pursued this much further - still no clean
+decode, but now a thoroughly-tested negative with one new data point and
+one useful self-correction, not an under-investigated gap.** Re-downloaded
+fresh (`sequential.com/support/download/mopho-operating-system/`, still
+live) and verified the header directly from raw bytes: `F0 01 25 6D ...
+F7`, one single SysEx message, 149,895 bytes. **New finding: Mopho's type
+byte is `0x6D` (109)** - doesn't match Tempest's documented type-byte
+convention (`0x5C`-`0x63`) at all, a genuinely new, unexplained data
+point. Confirmed `UnescapeStandard` and `Unescape7Plus1`
+(`internal/sysex/encoding.go`) are currently byte-identical code in this
+repo - "try the other DSI scheme" isn't actually a distinct test as the
+codebase stands today.
+
+Extended the header-length sweep (0-16 bytes, scored via capstone mnemonic
+matching rather than eyeballing) and additionally searched the *entire*
+~131KB decoded stream, word-aligned, for both sibling stubs' exact byte
+patterns - not just offset 0: **zero hits for OB-6's `lui`/`addiu`/`jr`
+stub idiom anywhere in the whole stream; exactly one hit for Tempest's
+`jal;nop` idiom, inspected directly and judged noise** (flanked by
+`<invalid>` decodes and a near-duplicate false match one word earlier).
+Also tried a DSI nibble-pair (hi/lo nibble split) hypothesis, motivated by
+the payload dividing evenly by 2 but not by 8 - also no clean stub at
+offset 0, not exhaustively swept under this scheme.
+
+**Self-correction worth recording explicitly**: an initially-promising
+signal (large ~1024-byte runs of raw `0xFF`/`0x7F` bytes, suggestive of
+PIC32's standard flash-row size) turned out, on closer inspection, to be
+**insensitive to which header-length/alignment was tried** - it shows up
+identically regardless, meaning it cannot actually discriminate the
+correct scheme and doesn't validate 7+1 packing specifically, just
+"this payload contains genuine blank/erased flash," consistent with any
+top-bit-masking scheme. Flagged here so this near-false-lead isn't
+rediscovered and overclaimed later.
+
+**Conclusion: Mopho does not help the Tempest base-address problem.** No
+scheme tested (7+1 at any alignment, nibble-pair) produced a recognizable
+reset stub, so there is no new address clue to compare against Tempest's
+own partial `jal`-based stub, unlike OB-6's full `0x9D0C4680` target. This
+is now a well-tested negative, not an unexplored gap - if picked up again,
+the next real angle is a different scheme entirely (RLE/compression for
+the blank-flash runs, or asking Mopho's own actively-modded hobbyist
+community, which is larger than Tempest's and may have already solved
+this container format independently).
+
 ## 5. The base address problem
 
 This is the actual blocker. To do anything useful with Ghidra (cross-reference
