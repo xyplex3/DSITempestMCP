@@ -4723,3 +4723,84 @@ continued: extend the manual-vocabulary matcher over sub-region A's
 way §26/§38 found repeat sightings of the 28-byte structure; investigate
 the adjacent, unexplored area immediately past `0x747a0` (clean,
 non-printable, `F`/`G`-heavy pattern).
+
+---
+
+## 52. A second, independent pass at the same matcher fix: cross-validates §50's findings, quantifies the fix's overall effect, and recovers a complete 35-name scale table (2026-10-18)
+
+A second agent, independently assigned the same general task as §50
+(fixing §46's single-best-match-per-word limitation), worked in
+parallel with a different implementation (regex-based fuzzy matching
+plus direct byte inspection, rather than §50's sliding-window local
+alignment) and a larger 771-entry dictionary. Rather than pure
+duplication, this run both independently cross-validates §50's specific
+findings and adds real content and statistics §50 didn't cover.
+
+**Independent cross-validation: both agents reach the identical
+descending-order reading for the "Mod N Amount" and "Osc N Frequency"
+clusters, via different methods.** This run resolved all 8 "Mod N
+Amount" entries (`0x6e74f`-`0x6e7bf`) with 7 of 8 digits directly legible
+and the 8th (`Mod 7 Amount` at `0x6e760`, where the digit character is
+entirely absent with no control-byte trace at all - a distinct loss type
+from the usual single-control-byte model) resolved by elimination from
+the confirmed descending sequence - matching §50's independently-derived
+`Mod 8` through `Mod 1` ordering exactly. Same for "Osc N Frequency":
+confirms §46's exact quoted pair (`"Osc 2 Frequency"` at `0x6eab4`,
+`"Osc1 Frequency"` at `0x6eac4`) and reveals it sits inside a larger
+10-entry run (`0x6ea30`-`0x6ead4`: Osc 1/2 Pulsewidth, Osc 2/1
+Pulsewidth, Osc 4/3 Level, Osc All Freq, then Osc 4/3/2/1 Frequency) -
+the same reverse-manual-order pattern §50 found independently, now
+confirmed a second way.
+
+**A major, genuinely new finding, found by simple hand-reading rather
+than the matcher**: the **complete 35-name modal scale table**, fully
+legible at `0x6c660`-`0x6c7c0`: `Major, Melodic Minor, Harmonic Minor,
+Diminished, Chromatic, Pentatonic Major, Pentatonic Minor, Whole Tone,
+Blues, Bebop, Egyptian, Arabic, Byzantine, Gypsy, Spanish Gypsy,
+Hungarian, Romanian, Spanish, Persian, Hindu, Oriental, Chinese, Iwato,
+Hirajoshi, Prometheus, Pelog, Mohamedan, Javanese, Hawaiian, Mongolian,
+Dorian, Phrygian, Lydian, Mixolydian, Locrian`. **The count is exactly
+35** - directly and precisely confirming the OS 1.4 addendum's text
+("New Modal Scales Added to 16 Tunings Mode... now a total of 35
+different musical scales") against the real firmware content, something
+the manual itself never lists by name anywhere.
+
+**Quantified the fix's overall effect with a controlled before/after
+comparison, using identical tooling for both measurements** (something
+§50 didn't report in aggregate): running the same matcher and 771-word
+dictionary in single-best-match mode versus all-occurrences mode, on
+the trustworthy ≥9-character tier only: 329 distinct words matched in
+both modes, but occurrences rise from 329 to **632** (92 words have more
+than one real confident occurrence), non-overlapping covered byte-spans
+rise from 285 to 486, and zone coverage rises from 17.1% to **26.0%** -
+a +52% relative increase in matched content from fixing this one
+limitation. Of the newly-matched content, 76% comes from the firmware-
+native dictionary extension §46 suggested, directly confirming that
+specific recommendation's value. Sample of other words recovering real
+multiple occurrences: `MIDI Note` (83, including a separate "Root MIDI
+Note"/"Note Mod" calibration cluster at `0x70dfb` beyond the already-
+known Pad/Mute/Beat table), `Save/Load` (11), `Play List` (10),
+`Calibrate` (9), `Env Attack`/`Env Decay` (7 each), `Init Beat`/`Init
+Sound` (6-7 each).
+
+**Honest caveats carried forward**: digit-differentiated clusters
+(`Mod`/`Osc`/`Aux`/`LFO` N-variants) need direct byte inspection, not
+fuzzy-cost alone, since a cost-2 budget lets one digit substitute freely
+for another - `Aux 1/2 Env` and `LFO 1/2 Amount` show the same pattern
+and were only spot-checked (2 offsets), not exhaustively verified the
+way Mod/Osc were. ~74% of the zone's bytes still aren't covered by any
+confident ≥9-character match, though hand-reading suggests a meaningful
+further fraction is legible but simply not yet in any dictionary
+(undo/redo and file-management screens especially).
+
+**Where this leaves things**: §50's specific findings are now
+independently confirmed by a second method, the fix's overall value is
+quantified (+52% coverage), and a complete, precisely-countable 35-item
+scale table is recovered and cross-checked against the OS 1.4 addendum's
+own wording - a genuine addition beyond §50's scope. Concrete next
+steps if continued: hand-verify the `Aux`/`LFO` digit clusters the same
+exhaustive way as Mod/Osc; add a same-span minimum-cost post-filter to
+the per-word results before treating any further list as final; persist
+the 35-scale-name table and the Osc/Mod reverse-ordering pattern as
+confirmed structural facts (both independently reached here and in
+§50).
