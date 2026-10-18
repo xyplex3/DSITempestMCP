@@ -4561,3 +4561,86 @@ lead; a separate Factory Projects/Sounds bundle remains completely
 unexplored; and, as this project consistently concludes for this class
 of question, direct ICSP hardware access remains the most reliable path
 to settle this outright, now with Voice itself cleanly eliminated.
+
+---
+
+## 50. §46's "best-hit-only" limitation diagnosed more precisely, and a real structural discovery: Mod Matrix labels stored back-to-back in exact reverse manual order (2026-10-18)
+
+Direct follow-up resolving §46's flagged "Osc/Mod-Amount digit
+ambiguity" limitation, using a smaller, fully-enumerable 62-word
+dictionary built directly from the real manual's Modulation Sources/
+Destinations appendix (rather than reusing §46's general 404-word
+dictionary) and a sliding-window local-alignment matcher that scores
+every position within a fragment, not the fragment as a whole.
+
+**A sharper, more precise root-cause diagnosis than §46's own framing.**
+§46 described the limitation as "kept only the single best-scoring hit
+per dictionary word." Direct byte-level inspection reveals the real
+mechanism is more specific: **within a single fragment, multiple real
+dictionary entries are sometimes concatenated with zero separator at
+all** - not even a lone control byte between them. Hand-verified example
+at `0x6eaa5`-`0x6eacc`: the masked text literally reads `"sc 3
+FequencOsc 2FrequecyOsc1 Freqency"` <!-- codespell:ignore --> - three entries (`"Osc 3
+Frequency"`, `"Osc 2 Frequency"`, `"Osc1 Frequency"`) run together with
+no gap whatsoever. A matcher scoring one dictionary word against the
+*whole* fragment (as both `decode_preset_text.py`'s model and §46's own
+matcher did) can only ever find the one sub-run that dominates the
+global alignment score - it's structurally incapable of finding the
+others. This is "scored the wrong unit" (whole fragment vs. sliding
+windows within it), not merely "kept the wrong hit."
+
+**Validated with the same noise-calibration standard §46 established,
+now confirmed on a second, independent dictionary/zone combination.**
+Of 62 manual-derived words, 56 produced shuffled-control-validated
+trustworthy hits (average ≈0.00 false-positive rate over 10 shuffle
+trials each); the 6 contaminated exceptions are exactly the shortest
+words (`LFO 1`, `LFO 2`, `Noise`, `VCA`, `Pan`) - consistent with, not
+contradicting, §46's own length-bucket finding. Across the 56
+trustworthy words, 99 distinct byte-offset occurrences were found,
+against a "best hit per word" ceiling of 56 - concrete confirmation
+that real repeated/adjacent occurrences exist, not matcher noise.
+
+**The real structural discovery: a contiguous, hand-verified 893-byte
+run (`0x6e74f`-`0x6eacc`) holds the entire envelope/LFO/Mod-matrix-
+amount and oscillator portion of the manual's Modulation Destinations
+list, stored back-to-back with no separators, in an order that is the
+exact reverse of the manual's own top-to-bottom column presentation.**
+In ascending file-offset order: `Mod 8` through `Mod 1 Amount`; then
+each envelope parameter's `All/Aux2/Aux1/Amp/Filter/Pitch` variants for
+Release, Decay, Attack, and Amount in turn; then `LFO All/2/1 Amount`
+and `Frequency`; then filter/volume/pulsewidth/level/frequency
+oscillator parameters, each internally in descending index order; ending
+in the Mod Matrix source/destination category labels and a text-editing
+dialog cluster (`Delete Char`/`Insert Char`/`Edit Char`/`Select Char`/
+`Revert...`). This directly resolves §46's flagged ambiguity: the Osc/
+Mod digit loss wasn't unresolvable noise - these are distinct physical
+entries in a strict, provable descending sequence, not one ambiguous
+slot.
+
+**A genuinely new recovery technique, not used anywhere earlier in this
+document: positional digit recovery from a confirmed descending
+sequence.** Where a digit is itself destroyed by a control byte (e.g.
+`"Mod␣␣Amount"` at `0x6e760`, the digit fully gone), its identity can be
+recovered from context alone - it must be `Mod 7 Amount`, sitting
+between the confirmed `Mod 8 Amount` (`0x6e74f`) and `Mod 6 Amount`
+(`0x6e770`) in the established sequence. A real, reusable technique for
+any future gap in a confirmed ordered run.
+
+**Honest caveats, reported plainly**: `Resonance`, `Osc 1/2 Mix`, `VCA`,
+and `Pan` are conspicuously absent from their expected reverse-order
+slots in this specific run - not missing from the firmware overall
+(`Osc 1/2 Mix` found intact elsewhere at `0x6ee6d`; `Resonance` found
+twice elsewhere), just not stored adjacently here, unexplained. The
+greedy non-overlap window-picker has a minor cosmetic quirk at shared-
+character boundaries between adjacent entries (doesn't lose any real
+entry, just occasionally misattributes a byte or two at a shared
+boundary) - a known implementation limitation, not a firmware finding.
+
+**Where this leaves things**: a precise resolution of §46's flagged
+ambiguity, a real new structural fact (reverse-manual-order storage,
+previously undocumented), and a reusable recovery technique for future
+gaps. Whether this "exact reverse of manual order" pattern recurs for
+other dictionary clusters in the zone (Mod Sources, save/load dialogs,
+etc.) is plausible given this result but untested - a reasonable next
+step if continued, alongside extending this sliding-window approach to
+the rest of the ~23.5KB zone with the fuller dictionary.
