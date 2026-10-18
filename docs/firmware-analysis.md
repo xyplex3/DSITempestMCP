@@ -2547,3 +2547,264 @@ already-ruled-out ones; the ICSP hardware path (§7 item 5) would also allow
 a live calibration/parameter dump to be captured and diffed directly
 against this exact byte range, a stronger test than further static
 analysis is likely to produce.
+
+---
+
+## 28. Voice's used-flash boundary across all 6 releases: no recurring offset, but a cleaner story - a single, perfectly contiguous, monotonically-growing, consistently non-text edge (2026-10-17)
+
+Follow-up to §24's explicitly-left-open item: does Voice show its own
+recurring boundary offset across multiple version pairs, mirroring §19's
+`~0x76800` Main side-finding (two *unrelated* version-pair comparisons
+coincidentally landing at the same offset)? Extended §24's single-pair
+measurement (1.1.3→1.2.0.8) to all 5 adjacent pairs across the full
+2011-2017 release history.
+
+**Pipeline re-verified independently**: all 6 Voice files decode to the
+confirmed fixed 65,577 bytes; Sam hash-identical across all 6 (matches
+§14); Panel hash-identical from 1.3.0 onward, distinct for 1.1/1.2
+(matches §14 exactly). **New pipeline-relevant fact**: Voice's decoded
+image is byte-identical across 1.2.0.8, 1.3.0, and 1.3.0.6 - Voice simply
+wasn't touched for three consecutive Main releases spanning May
+2012-Aug 2013 (confirmed not a coincidental hash collision - the raw
+`.syx` file bundled inside the 1.3.0.6 release is literally still named
+`Tempest_Voice_1.2.0.syx`).
+
+**The measurement, every pair:**
+
+| Pair | Boundary before | Boundary after | Delta |
+|---|---|---|---|
+| 1.1.3 → 1.2.0.8 | `0xa282` | `0xa45d` | +475 (§24, reproduced exactly here) |
+| 1.2.0.8 → 1.3.0 | `0xa45d` | `0xa45d` | 0 (byte-identical files) |
+| 1.3.0 → 1.3.0.6 | `0xa45d` | `0xa45d` | 0 (byte-identical files) |
+| 1.3.0.6 → 1.4 | `0xa45d` | `0xa655` | +504 |
+| 1.4 → 1.5.0.2 | `0xa655` | `0xa76d` | +280 |
+
+**No shrinkage anywhere** - checked in both directions for every
+non-identical pair, unlike Main where §19 found one pair (1.3.0→1.3.0.6)
+with genuine content disappearing. No other growing/shrinking edge exists
+anywhere else in the file for any pair - a full-file diff scan (not
+restricted to this neighborhood) finds transitions only in this one
+`0xa282`-`0xa76d` band, every time.
+
+**Both newly-found growth blocks (504 bytes and 280 bytes) are confirmed
+NOT readable text**, by the identical battery §24 already used (`strings`,
+§23's masked-density-vs-baseline test, §20's 4-byte-residue null-clustering
+test) - both show the same depressed-not-elevated masked density (40.3%
+and 36.4% vs. 51.9%/51.8% local baselines) and no null-clustering, the same
+signature as §24's original block. **This generalizes §24's single-pair
+negative to Voice's entire observed growth history**: every time Voice's
+image has grown since 2011, the new content has been non-text, same as the
+first instance.
+
+**Answering the actual question: a clean negative on the specific
+"recurring coincidental offset" framing, but a cleaner and more informative
+structural finding emerges instead.** The four distinct boundary values
+(`0xa282`, `0xa45d`, `0xa655`, `0xa76d`) never repeat - unlike Main's §19
+coincidence. Instead: **the boundary advances strictly monotonically, and
+each growth event starts exactly where the previous one ended** - zero gaps
+or overlaps across the whole 2011-2017 span (total advance: 1,259 bytes,
+41,602→42,861 bytes used, against Main's single 29,713-byte jump in one
+release). A side-observation found while checking this: the region
+immediately beyond the growing edge (`0xa818`-`0xb000`) is confirmed
+byte-identical (SHA-256) across all 4 distinct Voice builds checked - a
+large untouched-padding region staying fixed while the small growing edge
+advances toward it, the mirror image of §18's Main finding (there, a large
+*used* code region stays fixed while growing/shifting code surrounds it).
+
+**Where this leaves things**: does not generalize §18's "frozen
+high-confidence boundary across all 6 versions" pattern to Voice - Voice's
+analogous boundary isn't frozen, it moves every time content actually
+changes. Does not reproduce §19's coincidental-recurring-offset
+side-finding either - tested directly, clean negative. What does
+generalize and strengthen: §19's core erased-flash-diffing technique and
+its content-type negative both hold up across every growth event in
+Voice's full release history, not just the one pair §24 checked. Concrete
+next step if continued: check whether the `0xa818`+ frozen-padding region
+(still ~22KB unused as of 2017) is ever used in a later release, were one
+to surface; check whether Main's own equivalent beyond-known-boundary
+regions behave the same contiguous-growth way.
+
+---
+
+## 29. A real external ground-truth source found: the manual's "Samples" appendix, 454 official factory names - the strongest validation of the lossy-masking method yet, plus concrete corrections (2026-10-17)
+
+Follow-up to §25, searching for an authoritative external source to validate
+the lossy-masked firmware transcript and resolve its unrecoverable
+fragments. **Found one, and it's decisive**: the Tempest Operation
+Manual's own "Samples" appendix is a complete, official factory
+sample/preset name list - not a guess or a forum compilation, straight
+from Sequential/DSI's own documentation.
+
+**Two manual editions checked, both via the Wayback Machine technique
+already proven in this investigation** (`matchType=domain` + regex
+`filter` against `davesmithinstruments.com`): `Tempest_manual_1.0.pdf`
+(original release, pre-Bank-B) and `Tempest_manual_1.3.pdf` (covers
+through OS 1.3, i.e. includes Sound Bank B / OS 1.2 content). Both
+editions' "Samples" appendices are **content-identical** (confirmed by
+direct diff - only whitespace/column-width differences and one single-word
+fix, `"Tambouriney"`→`"Tambourine"`). This means Sequential never updated
+the manual to separately call out Bank-B-specific additions - it's one
+static list across OS 1.0 through at least 1.3, a clean negative on using
+manual-version-diffing to isolate "new in 1.2" names specifically (a
+different technique than §19's firmware-image diffing, which still works).
+Extracted programmatically from the 3-column table: **463 total
+name-tokens, 454 unique** (8 genuine repeated names - `808ish`×3,
+`909ish`×2, etc. - confirmed real repeats, not extraction artifacts, since
+they recur identically in both editions).
+
+**Checked the OS 1.2 addendum PDF exhaustively this time** (all 16 pages,
+not just the one sentence §20 already quoted): confirmed, fully, zero
+specific sound names anywhere in it - the "Sound Bank B" section is purely
+feature description (16 extra slots, B1-B16 designators, copy/erase
+behavior), closing this specific document out as a name source entirely.
+
+**This is strong, direct, external confirmation that §25's lossy-masking
+methodology was producing real, correct names, not pattern-matching
+noise.** Every name quoted in §19/§20/§23/§25 was checked against the
+454-name official list; the large majority match exactly: `White Noise`,
+`Pink Noise`, `Cicada`, `Mid Kick`, `SCI Tom Cart Kick`, `LM-1 Bass Drum`,
+`LinnDrum Bass`, `909ish`, `808ish`, `Heavy Open`, `Loose Open Hat`,
+`LM-1 Closed`, `Tight Studio Hat`, `Crack Hat`, `Piano1`, `Clarinet`,
+`Vocal1`, `Vocal2`, `Harp`, `Oboe`, `WWind`, `BellOrg`, `SynBell`,
+`VS 23`/`26`/`32`/`84`-`92`, `Nice Hi`/`Mid`/`Floor`, `Hi`/`Mid`/`Low
+Maple`, `Guiro`, `Castanet`, and many more.
+
+**Concrete corrections to the firmware transcript, exactly what this
+search was for:**
+
+- **`Resonant K` and `Electron K` are genuine, complete official names
+  ending in "K" - not truncated.** §20's "presumably cut from '...Kick'"
+  guess was wrong; both appear as standalone official entries. The
+  firmware read was already fully correct here; the interpretation wasn't.
+- `GrainGranny` → official `Grain Granny`; `BitReduction` → official
+  `Bit Reduction` (both: a space exists that the masked read ran together).
+- **`Bck Scatter` → official `Back Scatter` - a clean, confirmed instance
+  of the unidentified deletion mechanism (§23/§25) caught in the act**:
+  the dropped `a` is now a documented example with known-correct ground
+  truth on both sides, not just "something's missing."
+- `Crunch` → official `Crunchy` (trailing `y` dropped).
+- `Partials 1`/`Bell Partials` (§25's "additive-synthesis sub-cluster") →
+  official has `Bell Partials 1` and `Bell Partials 2` as two numbered
+  entries, not a generic pairing.
+- **`Bass Closed` (§23) does not appear in the official list at all** -
+  the real name in that slot is most likely `Boss Closed` (paired with
+  `Boss Open`, alongside the already-correct `Heavy Closed`/`Heavy Open`,
+  `Zilch Closed`/`Pedal`/`Open`, `Sharp Closed`/`Pedal`/`Half`/`Open`
+  families) - an `o`→`a` misread under lossy masking, flagged as probable
+  not certain without re-examining the raw bytes directly.
+- `Dark Open` (§23) → official pairing is the abbreviated `Dark Cl`/
+  `Dark Opn`, not spelled-out `Closed`/`Open` - likely an over-expansion
+  during §25's manual reconciliation, not a firmware misread.
+- **Bare `Cabasa` and bare `Tabla` (§25) don't exist officially** - only
+  `Cabasa A`/`Cabasa B`/`LM-1 Cabasa`/`LinnDrum Cabasa`, and only
+  `Hot Tabla Lo`/`Mid`/`Hi`/`Highest` plus `Tabla Bounce` - every real
+  instance is qualified, never standalone.
+- **One name found in the official list that wasn't in any firmware
+  transcript to date: `VS 95`** - sits immediately after the already-
+  firmware-confirmed `VS 84`-`VS 92` run, worth a targeted look in the
+  firmware's VS-series region if this thread continues.
+
+**An important scope clarification, not a contradiction**: 454 unique
+official names is well above §25's ~200-230 estimate for the single
+29.7KB firmware block. This is expected: the manual's appendix is the
+complete factory sample/waveform library used across *all* Tempest
+Sounds, while the firmware block is a narrower slice. Every firmware name
+checked landed inside the 454-name list; none contradicted it - the
+firmware names are a real subset, not a mismatched set.
+
+**One open process gap, worth recording plainly**: this cross-reference
+could only be done against the *example names quoted in prose* in
+§19/§20/§23/§25, not the full confidence-graded transcript §25 actually
+produced - that full working list was never persisted to a file or this
+repo, only summarized. If this thread continues, **re-deriving the
+firmware transcript using this 454-name list as a closed dictionary**
+(rather than general English-word reconciliation) should resolve most or
+all of §25's ~20-25 "unrecoverable" fragments at once, since the search
+space per fragment collapses from "any plausible English word" to "one of
+454 known names" - this is now the single highest-value next step for the
+preset-text thread.
+
+**The full 454-name official list** (extracted from `Tempest_manual_1.3.pdf`'s
+"Samples" appendix, printed pages 71-76), kept here as reference data for
+any future cross-referencing against this or other firmware regions:
+
+White Noise, Pink Noise, Green Noise, Resonant 4K Noise, Soft Noise,
+Cicada, Buzzed, Chain Link, Grinder, 420 HighPass Noise, Tight Boom,
+Porky, Hollow Thud, Hollow Head, Mid Kick, Slap Kick, Thwang Kick,
+Resonant K, Boom Kick, Quickick, Punchy Kick, Nice, Short n Sweet, Bumpy,
+Loose, Solid Thump, Upfront, Good Kick, Metallic, Square, Beefy, Flat,
+Shorty Thud, SCI Tom Cart Kick, LM-1 Bass Drum, LinnDrum Bass, 909ish,
+808ish, Long Time 808, Cut the Mustard, Electron K, Flab, Solid, Early
+Nineties, DigiBonk, Woosh Kick, Dirty Woosh, Distorted 09, Grain Granny,
+Bit Reduction, Back Scatter, Crunchy, Distorted Bump, Reversed, Orangey,
+Snare Add Rim, Mid Head, Acoustic, Good Hit, Some Head, Supra Snare, Loose
+Ring, Trick Snare Rim, Resonant Loose, Cool Rim, Another Edge, Cut Snare,
+Muted Half Edge, High Edge, Cracker, Light Rim, Dry Rim, Pickle-O, Woody
+Side, Side Stick, Dead Side Stick, Sharp Side, Rim Cut, 808 Rim, 909 Rim,
+AcouStick, LinnDrum Rim, Tom Cart Rim, SweetDaOneSnare, Quickie, Short n
+Tight, High Short, 30 Day Snare, Fat 9009, Funk Sn, LM-1 Snare, LinnDrum
+SD, Basicly, <!-- codespell:ignore --> Beatbox, Machine, Twin, Dry, Short Attack, Digi 8,
+CompuSnare, Plastic, Snare Trash, Bucket, Toy Drum, Abrupt, What Snare?,
+Canned, Dead Lid, Tom Cart SD, Classic, DR55 SD, Cold hit, Zippy Thwack,
+Crumbly, 70s Snare, Bit Reduce SD, Distant, Filtered SD, Oil Can, Digital
+Sweetness, Noisy Click, Splatted Snare, Broken SD, Ghost of a Snare, Video
+Game, Caved Perc, Reverse Snare, Edge Heavy, Pedal Edge, Pedaled AM, Half
+Edge, Open Edge, Sharp Closed, Sharp Pedal, Sharp Half, Sharp Open, Zilch
+Closed, Zilch Pedal, Zilch Open, Pastey, Pastey Half, Heavy Closed, Heavy
+Open, Boss Closed, Boss Open, Dark Cl, Dark Opn, Amazon Closed, Amazon
+Half, Trash Hat, Loose Open Hat, 9009 HH, Close Foot Pedal, LM-1 Closed,
+LM-1 Open, LinnDrum HH Closed, LinnDrum HH, LinnDrum HH Open, Close Tambo,
+Tight Studio Hat, Crack Hat, Accent, HH Dub Plate, Dry Tap, Peace Corp,
+Old Timer, Blu Pedal, Fake, Open Fat, Abrasive, Tic Tac, Noise Hat,
+Reversed, Dirty Pedal, Barely There, Click, Quiet, Shorty HH, One Foot
+Pedal, 8080 HH, 8080 Open, 808ish Maraca, 9009 HH2, Perc Hat, DR55 HH,
+Right Foot Pedal, Another Perc, Closing HH, Small Hi Hat, Unnatural, Trip
+Hop HH, Aliens, Silver HH, Kicky Hi Hat, Large Edge Cymbal, Zilch Crash,
+Gong, Pastey Hit, 45 Degree Dust, Bell Crash, Oriental Hit, Higher Cymbal,
+No Name Crash, 909ish, LinnDrum Crash, 808ish Crash, Hertz Cymbal, Flat
+Ride, Medium Bell, Blue High Ride, Small Gong, Smooth Ride, Shortcut,
+LinnDrum Ride, 909ish Crash, Tom Splash Cart, Reverse CY, Res Hi, Res Mid,
+Res Floor, Nice Hi, Nice Mid, Nice Floor, Punchy Hi, Punchy Mid, Punchy
+Low, Hi Maple, Mid Maple, Low Maple, Blue Tom Hi, Blue Tom Lo, Tonic Tom
+Hi, Tonic Tom Low, Acoustic Hi, Acoustic Low, Tom Splat, Thudd Tom, Wood
+World, SCI Tom Cart, LM-1 Hi Tom, LM-1 Lo Tom, LinnDrum TomHi, LinnDrum
+TomMid, LinnDrum TomLo, 808ish Hi Tom, 808ish Mid Tom, 808ish Low Tom,
+909ish Tom Hi, 909ish Tom Mid, 909ish Tom Low, Reverse Hi, Reverse Mid,
+Reverse Low, Clap 9090, Layered Clap, Slap Clap, Digi Clap, NotDisClap,
+PerClapsaLot, LM-1 Clap, LinnDrum Clap, 808ish, 9090, Reverse Clap, How
+Now, Real Cow, Tang Cowbell, Dinky Cow, Short Cow, 80s Cowbell, LM-1 CowB,
+LinnDrum CowB, OG 808 Cow, Reverse Cowbell, Cross Stick, Light Cross, Low
+Cross, Jam Block H, Jam Block L, Keys, Guiro, Castanet, Drag That Click,
+Moon Golf, Real Shaker, Cabasa A, Cabasa B, LM-1 Cabasa, LinnDrum Cabasa,
+Real Fingers, Cute Drum Robot, Digi Click, Bit-o-Clap, Hot Tabla Lo, Hot
+Tabla Mid, Hot Tabla Hi, Hot Tabla Highest, Tabla Bounce, Udu Bounce, Udu
+u Do 1, Udu u Do 2, What Conga, Conga 1, Conga 2, Conga 3, 808ish Hi
+Conga, 808ish Lo Conga, LM-1 CongaHi, LM-1 CongaLo, LinnDrum Conga,
+Tambourine, Tambo Ring, TamBell, Metal Tamb, Wood Tamb, LM-1 Tamb,
+LinnDrum Tamb, Raucous Tamb, Tri HiFi, Short Triangle, Noisy Bell, Flexi
+A, Flexi B, Stick on Metal, Clank, Sounds Like?, Abrupt Metal, 808ish
+Clave, Rico Clave, Phazey Click, Coming Up, Choked Perc, Hollow Box Lid,
+Oil Drum, Canned Perc, Half Full, Pla-stick, Punch n Drag, Nutrino, Solar
+Explosion, Wrinkled, Quark, Particulate, Hadron, Flutter, Broken Toy,
+Click Reduction, Fazzle, Grunt, Bucket Bottom, Charged Porceline, Brrrrr,
+Shorted, BeatBox, Tap That, Boxer2, Flat Perc, Flat Click, Filtered Perc,
+Vacant, Hybrid Click, SCI Tom Cart Laser, SCI Tom Scratch, Needle On,
+Outta Time, Sine 130.81 Hz, Sine, Sawtooth, Square, Orient, Corn, WmBell,
+HighPipe, Flute 2, RdBell, Mass, Med Pure, R2Bell, ReedOrg, Tuba, W2Bell,
+OrgAhh, FullBell, FmtBell, MelOrg, Bell, FzReed, Clarinet, Pinch, FmtAOh,
+AhhFem, Clustr, FmtAhh, AhhHom, M.Pinch, Banjo1, AhhBass, VoxPnch,
+TriPlus, RegVox, OrgPnch, DisBel, Vocal1, AhhPnch, PnoOrg, Pulse2, Vocal2,
+BrReed, Pulse3, Harmony, NoFund, SqrReed, Bass, ReedHrm, Oohh, Guitar,
+LiteFund, Eehh, Nice, MelOrg, Feedback, WWind, Bell Partials 1, Piano1,
+Oboe, Bell, E.Pno, Harp, VS 84, M.Harm, Pipe, VS 85, VS 23, Hack1, VS 86,
+HiTop, Hack2, VS 87, WmReed, Hack3, VS 88, VS 26, Pinch, VS 89, Hollow,
+BellHrm, VS 90, BellOrg, BellVox, VS 91, BassBell, Hi Harm, VS 92, Tine1,
+Hi Reed, Piano2, SynBell, BellReed, Bell Partials 2, VS 32, WmWhistl, VS
+95
+
+**Where this leaves things**: the preset-text thread now has a decisive
+external anchor it never had before. The honest path forward isn't more
+manual English-word guessing against the lossy firmware bytes - it's
+re-running the masking/reconciliation against this closed 454-name
+dictionary, which should resolve the bulk of §25's remaining uncertainty
+in one pass rather than fragment by fragment.
