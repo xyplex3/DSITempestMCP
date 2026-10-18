@@ -4893,3 +4893,99 @@ this class of setting anymore, post-1.3." The ~45KB consolidated UI-
 text-pool discovery is a real, standalone architectural fact about the
 OS 1.3 reorganization, independent of whether the value-storage question
 is ever resolved computationally.
+
+---
+
+## 54. The §51 20-byte structure confirmed recurring across all 6 Main releases, with a real period change (24→20 bytes) at the OS 1.2→1.3 boundary - confirmed absent in Panel/Voice/Sam (2026-10-18)
+
+Direct follow-up checking whether §51's newly-found 20-byte structure
+recurs elsewhere, the same question §26/§38 asked (and answered
+positively) for the unrelated 28-byte structure. Validated the whole
+pipeline against the already-known 1.5.0.2 site first (boundary,
+shuffle-control elevation, 15 identical rows, fingerprint - all
+reproduce §51 closely) before trusting the method on new data.
+
+**A real, materially stronger result than the 28-byte structure's: a
+literal, reproducible byte template, not just a statistical periodicity
+match.** The known site's 15 identical rows resolve to a concrete field
+template (`[2-byte VAL][06 9d][VAL repeated][06 9d][07 00 00 00][~0x7F
+byte][00 00 00][2-byte variable][00]`). An exact scanner for this
+template, run against the **full** decoded image of all 6 Main
+versions, finds it as the single, sole occurrence in each build (never
+a second site hiding anywhere else): 1.3.0 (5 hits, `0x72279`-
+`0x724d1`), 1.3.0.6 (7 hits, `0x7026c`-`0x704b0`), 1.4 (2 hits,
+`0x72129`/`0x7213d`), 1.5.0.2 (23 hits, `0x741f2`-`0x743be`, §51's
+original site). Each site independently passes the full decisive
+battery: shuffle-control elevation 3.04-3.79x (0/500 shuffled trials
+ever matching, consistent with §51's original 2.2-3.35x), period-7 text
+chi-square 2.97-4.65 (far below the 22.46 critical value, ruling out the
+lossy-text mechanism), and the same `0x1D`/`0x9D`/`0x06`/`0x86`
+fingerprint elevation with `0x55`/`0xAA`/`0xBB`/`0x5D` (the 28-byte
+structure's distinguishing pairing) flat/absent in every site - confirms
+these are genuinely the 20-byte family, not a stray 28-byte sighting.
+Literal content does not overlap between builds (the `VAL` payload
+differs every time: `28d7`/`58d5` vs. `24bc` vs. `68cc` vs. `f0ee`) -
+the same "same structural signature, different payload" shape §39
+already established for the 28-byte structure.
+
+**A real, well-controlled false positive was caught and ruled out during
+the search - worth recording as a methodology validation.** An initial
+generic scan flagged a stronger-looking candidate in 1.3.0.6 (11.59x
+shuffle elevation, higher than the real site's 3.17x) - direct
+inspection and the period-7 text chi-square test (296.07, decisively
+above critical) confirmed this was the already-known lossy UI-text
+mechanism coincidentally producing spurious lag-20 autocorrelation, not
+the structure being searched for. This is exactly the failure mode the
+test battery's text-check step is designed to catch, and it worked as
+intended.
+
+**The most significant new finding: the structure's period itself
+changed, at the same version boundary where this project has already
+documented other major OS 1.3 structural changes.** 1.1.3 and 1.2.0.8
+(the two pre-OS-1.3 releases) don't contain the exact 20-byte template,
+but a looser signature search (same `[VAL][06 9d][VAL repeated][06 9d]`
+core, without the `07 00 00 00` field) finds it in both, with a **24-byte
+period instead of 20**: 1.1.3 (7 hits, `0x6643da`-`0x6644ca`, record
+shape `22 00 00 00 [VAL][06 9d][VAL][06 9d] 00 00 80 03 [TAG] 00x6`) and
+1.2.0.8 (13 hits, `0x6c1fa`-`0x6c4fa`, same shape, `VAL` dominated by
+`9c81`). Confirmed with the same rigor: lag-24 autocorrelation elevation
+2.92-3.14x (both far above their shuffled-control max, and the dominant
+period at that location - lag-20 only shows a weak 1.50-1.54x there,
+explainable as an alias of the 24-byte record's own internal `06 9d`
+pair spacing, not a separate real signal), period-7 text chi-square
+0.03-0.49 (clean), fingerprint matching the 20-byte-era sites. **A
+secondary, consistent pattern**: the structure's total footprint is
+small and stable pre-1.3 (~750-770 bytes) and roughly 6x larger and
+stable from 1.3.0 onward (~4,540-5,526 bytes) - lining up with the same
+version boundary where this project has already independently
+documented major OS 1.3 content growth (§40/§44/§48's 80-label
+parameter pool, §45/§46's second UI-text zone). Flagged explicitly as a
+suggestive correlation in timing, not a proven mechanistic link - not
+independently tested here.
+
+**Panel, Voice, and Sam: a clean, decisive negative on both template
+variants.** The exact 20-byte template, the loose 24-byte-compatible
+template, and the full generic lag-specificity scan were all run against
+one version each of Panel, Voice, and Sam - zero template hits in all
+three, and the specificity scan's top hits in all three show
+`lag20 ≈ lag28` everywhere (no 20-specific-not-28 signal at all, unlike
+Main's four sites which all score clearly positive). The only elevated
+windows found are the same already-documented trivial padding-tail
+regions from §26/§28, not candidates.
+
+**Where this leaves things**: this structure is now confirmed as a
+real, recurring, Main-specific feature across the firmware's entire
+2011-2017 released lifetime, with a genuine period transition exactly
+at the OS 1.2→1.3 boundary - a materially stronger, more concrete result
+than the 28-byte structure's purely statistical recurrence, since this
+one has a literal, byte-exact, reproducible template. Its actual
+identity/purpose remains exactly as open as §51 left it - not attempted
+here, only recurrence was tested. Concrete next steps if continued: a
+clean, properly-rigorous test of whether the recurring `VAL` field is a
+literal Program Flash pointer (the aligned-scan-plus-resolved-value
+rigor §27 applied to a similar hypothesis for the 28-byte structure,
+explicitly not attempted here to avoid repeating that structure's own
+already-identified noise-artifact failure mode); whether the size growth
+at the OS 1.3 boundary is mechanistically tied to the other documented
+OS 1.3 content growth, or coincidental timing; sweeping Panel/Voice/Sam
+across their own full version histories rather than one version each.
