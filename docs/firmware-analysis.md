@@ -1686,3 +1686,70 @@ base-address problem (§5/§7/§11) at all - purely a UI-asset-storage
 question. Main's firmware (524,609 bytes) hasn't been checked against this
 same bitmap-candidate method at all yet - the natural next step if this
 specific thread continues.
+
+---
+
+## 17. GOL/GRC has no string-asset format at all - closes out the "hidden text blob" theory chain from §5.2/§12 (2026-10-17)
+
+The thread §12 left open (is GOL/GRC's text-storage mechanism the right
+one to test, given Legato tested negative) is now resolved directly from
+source, not inference: **it has no string/text resource format to
+decode.**
+
+**Confirmed from the library's own source** (`MicrochipTech/mla_gfx`,
+cloned fresh): `GFX_GOL_STATICTEXT`'s `pText` field is a bare
+`GFX_XCHAR*` pointer. `GFX_GOL_StaticTextCreate()` does nothing but store
+that pointer - no decode step, no resource-table lookup, no indirection
+through anything GRC-generated. `GFX_XCHAR` is either plain `char` (8-bit,
+the default) or `uint16_t` (only for non-Latin Unicode fonts) - both
+already exhaustively ruled out by §5.2's existing plain-ASCII and
+UTF-16LE/BE searches, all zero hits. A lower-level primitive,
+`GFX_TextStringDraw`, takes a raw string pointer directly too, bypassing
+GOL's object system entirely - the natural fit for a non-touchscreen,
+character-menu UI like Tempest's.
+
+**Confirmed from the tool's own real project-file schema**: a real saved
+GRC v3.25 project (`InternalResourceObjectLayer.xml`, from a public
+MLA-era example app) has exactly two top-level resource categories,
+`<Bitmaps>` and `<Font_Files>` - **no string/text category exists in the
+schema at all**, matching §13's finding that only images and fonts are
+real GRC asset types.
+
+**Confirmed from real production code**: Microchip's own AN1182
+multi-language demo (`an1182_demo.c`, a genuine 2014-era MLA example app)
+stores its UI labels as ordinary null-terminated `GFX_XCHAR` arrays -
+literal constants straight in `.rodata`, no asset format, no
+table-of-contents, no binary blob.
+
+**Bottom line**: if Tempest uses GOL/GRC at all, its UI text must be
+present as plain 8-bit ASCII or (only if deliberately Unicode-enabled,
+no reason for an English-only product) 16-bit arrays - both already
+searched for and already negative. **This closes off "hidden behind an
+undecoded proprietary asset format" as the leading explanation for §5.2's
+negative result** - there is no format to hide behind at the string level
+in this toolchain generation, only at the font/bitmap level (§13).
+
+**A new, speculative-but-well-grounded hypothesis worth recording**: every
+real GOL/GRC example found and read this session is a touchscreen
+point-and-click widget showcase (buttons, radio buttons, sliders) - GOL's
+actual design center. **Tempest has no touchscreen.** This is a real
+mismatch between the library's intended use case and Tempest's actual
+pad/knob/OLED-menu hardware UI, not previously stated this plainly. It's
+plausible DSI didn't use Microchip's GOL/GRC pipeline for Tempest's menu
+text at all, and wrote fully custom, bespoke display code directly against
+the OLED driver instead - consistent with zero GRC-shaped resource
+signatures ever turning up in Panel (§10, §13, §16 all independently
+found nothing).
+
+**Concrete next steps this generates**: (1) re-run §5.2's string search
+with short/truncated fragments rather than full manual phrases - a small
+OLED's real on-screen labels are very often abbreviated ("QUANTZ", "SWNG")
+and wouldn't match exact printed-manual wording, and this is now
+better-justified since the "hidden in a blob" alternative is weaker than
+before; (2) stop pursuing any GOL/GRC-era *string*-asset-format hypothesis
+specifically - there isn't one, confirmed, not just suspected; (3)
+consider whether UI text might live entirely outside Main/Panel's
+field-updatable images, on a display module with its own onboard
+controller/memory - consistent with this doc's recurring pattern (crt0,
+USB descriptor, and exception vectors are all similarly absent from these
+same images).
