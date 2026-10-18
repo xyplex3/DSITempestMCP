@@ -3401,3 +3401,125 @@ resolve this), and what the `0x1D`/`0x9D`/`0x06`/`0x86` fingerprint-byte
 dominance in the raw wire stream (§27) represents semantically. No
 further concrete next step identified for the zone-interaction question
 specifically - it now looks closed.
+
+---
+
+## 36. Is the period-7 deletion mechanism a general DSI packing convention? Tested against 5 other known growth/shrink blocks - a clean negative, plus two exact offsets §19 only approximated (2026-10-18)
+
+Follow-up question from a full corpus review: is the period-7 `0x00`/
+`0x80` control-byte mechanism (§31/§33/§34/§35) specific to Main
+1.2.0.8's one preset-text block, or a general convention that would show
+up in any "new content" block this investigation has already located?
+Tested directly against all 5 other known growth/shrink blocks - Main's
+two other version-pair blocks from §19, and all three of Voice's
+confirmed growth events from §24/§28 - rather than assumed either way.
+
+**Re-located every block from scratch first, rather than trusting the
+doc's existing approximate ranges - and this sharpens §19's own
+side-finding with exact values.** Main's two blocks (1.3.0.6→1.4 growth,
+1.3.0→1.3.0.6 shrink) both start at the identical offset **`0x7652c`** -
+confirming §19's "same offset across two unrelated version-pairs"
+observation precisely, where before it was only described as "~0x76800."
+Exact sizes, previously unstated or only roughly estimated: the growth
+block is `0x7652c`-`0x77483` (**3,927 bytes**, not §19's rough "~1.7KB"
+estimate), the shrink block is `0x7652c`-`0x7807f` (**6,995 bytes**,
+size never stated before). Voice's three blocks reproduce §28's table
+exactly (475/504/280 bytes at the same addresses), confirming the
+independent re-decode pipeline before trusting it on new data.
+
+**Two independent, well-calibrated methods, both validated against the
+known-positive case first.** A phase/chi-square test (fraction of bytes
+at each mod-7 residue that are literally `0x00`/`0x80`, compared against
+a 500-trial shuffled-control) and the sharper, more decisive test that
+originally found the real signal in §31 - longest run of *consecutive
+non-control* bytes, compared against a 2000-trial shuffled-control at the
+same byte population. Both methods correctly reproduce the known positive
+on the original zone before being applied to new data: chi-square 79.14
+(critical ≈22.5 at p=0.001), ratio 1.21x, and critically, a max clean-run
+of exactly 6 sitting at the 0.0th percentile of the shuffled-control
+range (mean 20.1, min 13) - the same hard ceiling §31 originally found.
+
+**Result: all 5 tested blocks are clean, unambiguous negatives.** Chi-
+square and ratio scores vary (1.04x-1.53x, some nominally clearing a
+naive significance threshold), but the decisive max-clean-run test
+falsifies every one of them: Main's growth block has a 486-byte-long
+completely clean stretch (100th percentile vs. its own shuffled-control -
+*more* clean than random chance, the opposite of the known mechanism's
+ceiling-of-6 signature); Main's shrink block has a 491-byte clean
+stretch, same story; all three Voice blocks sit at 71.4%-99.5th
+percentile, within or above the ordinary random range, nowhere near the
+known positive's 0.0th-percentile ceiling. A due-diligence strip-and-mask
+decode attempt (stripping the best-scoring residue's control bytes and
+masking the rest, done anyway despite the already-negative signal, per
+this project's own standard of not assuming a flat density test alone
+would catch everything) found no readable text in any of the 5 blocks -
+reproducing and extending §24/§28's existing negatives with a more
+targeted method, still nothing.
+
+**Where this leaves things**: the period-7 mechanism is confirmed
+specific to Main 1.2.0.8's one preset-text block, not a general DSI
+binary-packing convention that recurs whenever new content lands in
+flash - a real, well-tested negative, not an under-tested gap. The two
+newly-pinned exact Main block offsets are a genuine, useful correction to
+§19's original approximate description, and the discovery that both
+blocks show long (486/491-byte) completely clean stretches with zero
+control bytes is a new, unexplored observation (consistent with real code
+or a dense data table rather than any packed/escaped content, not
+investigated further here) - worth a look if this specific pair of
+blocks is revisited.
+
+---
+
+## 37. Is the structured zone raw unheadered pixel data? Rendered at every bit depth and width - a clean, well-controlled negative, extending §13/§16/§26's bitmap theory one step further (2026-10-18)
+
+Companion to §36, from the same full corpus review: every prior bitmap
+search in this investigation (§13/§16/§26) required finding the
+documented 28-byte `GFX_RESOURCE_HDR` descriptor as a prerequisite before
+interpreting anything as pixel data. This task tested the strictly
+weaker hypothesis - is the structured zone (§27/§32/§35,
+`0x6f804`-`0x700e0`) raw pixel data *without* a header at all - by just
+rendering its literal bytes directly.
+
+**113 renders at 1/4/8/16bpp across widths 8-256px (plus the record-
+period-aligned 224px), scored quantitatively and checked against two
+independent controls (random noise, and the same real bytes
+byte-shuffled to preserve the exact value histogram while destroying any
+2D arrangement) - not just eyeballed.** Five sub-regions tested
+separately: the full zone, the dense fingerprint run, the `0x6ff80`-
+`0x6ffe0` near-zero gap (§32's own dedicated small-icon candidate), the
+reduced-density resumption, and the adjacent small-integer table.
+
+**No icon, glyph, or recognizable shape appeared anywhere, at any bit
+depth or width.** The one genuinely non-random visual signal found (the
+dense run shows elevated row-to-row correlation, up to 0.85-0.86) is
+mechanistically tied to already-known structure, not image content -
+demonstrated two ways: it collapses straight back to noise level
+(0.52-0.53) when the identical bytes are byte-shuffled, and it peaks
+sharply at row-width = exactly 28 bytes, precisely §27's confirmed record
+period. Visually this renders as vertical streaky "barcode" lines running
+the full image height - the textbook artifact of periodic tabular data
+sliced at a stride matching its own period, not a picture. The 96-byte
+gap renders as scattered isolated dots with no outline or symmetry, and
+its apparently-elevated scores are fully reproduced by its own
+byte-shuffled control (e.g. real run=6.86/corr=0.875 vs. shuffled
+run=7.05/corr=0.839 at one tested width) - a 1D sparsity artifact (mostly
+`0x00`), not 2D placement. The reduced-density resumption renders as
+plain checkerboard static near the noise baseline. The small-integer
+table renders as vertical comb/column banding (the signature of a
+fixed-stride record table with mostly-zero and occasionally-nonzero
+columns), again fully reproduced by its own shuffled control. 16bpp
+produced only flat, featureless gray static on every region tried.
+
+**Where this leaves things**: extends §13/§16/§26's "no `GFX_RESOURCE_HDR`
+bitmap found" conclusion one step further, to "not even raw unheadered
+pixel data renders as an image anywhere in this zone, at any standard bit
+depth" - a genuine, systematically-tested negative (113 renders x 2
+independent controls x quantitative scoring), not an eyeballed dismissal.
+Still unidentified, unchanged by this result: what the 28-byte records
+actually encode and what the small-integer table's specific values mean.
+One small reusable technique surfaced for future use: rendering a
+periodic/record-structured span at row-width equal to its own confirmed
+period is a fast, decisive way to distinguish "known tabular periodicity
+bleeding into a pixel-grid rendering" from genuine 2D image content (real
+image content wouldn't collapse to noise under byte-shuffling, and
+wouldn't peak exactly at the data's own unrelated record stride).
