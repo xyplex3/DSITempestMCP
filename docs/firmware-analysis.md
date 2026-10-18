@@ -3233,3 +3233,90 @@ the ~9 excluded ambiguous (cost 6-7) matches, which might extend the
 event set further; pin the exact transition bytes at each of the 4 phase
 boundaries; directly test for confident name matches inside the
 structured zone itself.
+
+---
+
+## 34. The 4 phase-block "gaps" aren't structural at all - a correction to §33, with the real transition mechanics mapped byte-by-byte (2026-10-17)
+
+Follow-up to §33's open question: what happens at the 4 phase-block
+transition points? Direct byte-level inspection of each gap, rather than
+treating them as unidentified structural elements.
+
+**Headline correction: the gaps contain nothing but more lossy preset
+text - the same mechanism §31/§33 already characterized, just text the
+§33 matcher's cost≤1 threshold couldn't confidently anchor.** All 4 gaps,
+masked the same way as everywhere else in the zone, decode to plainly
+readable preset names continuing §29's dictionary in exact sequential
+order, with zero indication of any header, counter, category label, or
+separator: GAP1 (`0x6e650`-`0x6e934`) reads "Cut Snare, Muted Half Edge,
+High Edge, Cracker, Light Rim, ... Video Game, Caved Perc, Reverse Snare,
+Edge Heavy, Pedal Edge, Pedaled AM"; GAP2 (`0x6ec39`-`0x6ed4d`) reads
+"Silver HH, Kicky Hi Hat, Large Edge Cymbal, Zilch Crash, Gong, ...
+Shortcut"; GAP3 (`0x6f0f6`-`0x6f311`) reads "Cabasa B, LM-1 Cabasa,
+LinnDrum Cabasa, Real Fingers, Cute Drum Robot, ... Sounds Like?, Abrupt
+Metal"; GAP4 (`0x6f4e2`-`0x6f52e`) reads "...Sine 130.81 Hz, Sine,
+WmBell, RdBell, R2Bell, W2Bell, FmtBell, FzReed" - every single one an
+exact, in-order match to §29's official list. **Checked explicitly for
+any category-boundary marker: none exists.** GAP1 sits entirely inside the
+snare/rim category; GAP2 genuinely spans the HiHat-to-Cymbal transition
+but with zero marker between them; GAP3 spans five different categories
+(percussion→tabla→conga→tambourine→bell/metal) with nothing separating
+any of them. The qualitative "category" framing used elsewhere in this
+doc describes where names happen to fall in the dictionary's own order,
+not a literal in-firmware table-of-contents.
+
+**The period-7 control-byte mechanism doesn't stop at block boundaries -
+it runs through most of 3 of the 4 gaps, and §33's reported block
+boundaries are boundaries of confident word-matches, not of the
+underlying mechanism.** Tested, for every gap, whether exact `+7`-stepped
+extrapolation of the *preceding* block's residue continues to land on
+real `0x00`/`0x80` bytes, and separately whether the *following* block's
+residue can be traced backward through the gap:
+
+| Gap | Size | Residue change | Preceding-residue fidelity | Following-residue fidelity |
+|---|---|---|---|---|
+| 1 | 740 B | 2→5 | **97.1%** (102/105) | 20.8% |
+| 2 | 276 B | 5→0 | **85.0%** (34/40) | 27.5% |
+| 3 | 539 B | 0→3 | 20.8% | **96.1%** (74/77) |
+| 4 | 76 B | 3→6 | 72.7% | 54.5% |
+
+In gaps 1, 2, and 4, the *preceding* residue keeps firing at high fidelity
+through most of the gap, with the *next* residue only locking in cleanly
+in the final ~28-63 bytes right before the next confirmed block starts -
+and there's a genuine ~25-55-byte **overlap window** at each transition
+where both residues produce real control-byte hits simultaneously (hand-
+verified byte-by-byte for gap 1: residue-2 and residue-5 control bytes
+both firing between `0x6e90d` and `0x6e92d`), not one sharp single-byte
+cutover. **Gap 3 is the clear counterexample and the most important
+correction**: here the *next* block's residue (3) locks in almost
+immediately, within the first ~30 bytes of a 539-byte gap, and then
+dominates nearly the entire remaining span. **The real period-7
+residue-3 structure for what §33 called "block 4" actually begins at
+`0x6f115` - roughly 500 bytes before §33's reported `0x6f311` start**,
+meaning the underlying mechanism was running fine through almost all of
+gap 3; the word-matcher just couldn't confidently anchor names there
+(plausibly because this stretch's real names are short and heavily
+corrupted, e.g. `Udu u Do 1`, `Conga 1/2/3`, `Flexi A/B` - not
+independently verified byte-by-byte for every name here).
+
+**What this means for §33's model**: the "5 phase blocks with discrete
+jumps" framing should be understood as 5 ranges of *confident word
+matches*, not 5 discrete structural regions with sharp transitions
+between them. The real mechanism is one continuous period-7 process
+whose residue drifts by an ordinary local event (the true character
+count between two control-byte insertions deviating from exactly 7 at
+one or two specific points) rather than by any discrete inserted
+structure - consistent with "the same mechanism, an ordinary local
+reset," not a header or marker of any kind.
+
+**Where this leaves things**: closes out "what's in the gaps" cleanly -
+nothing structural, just more real text the matcher missed. Narrows the
+still-open question from "what happens at 5 clean phase-block boundaries"
+to "why does the true character-to-control-byte ratio occasionally
+deviate from exactly 7, and at which precise byte" - which remains as
+open as §31/§33 left it, now more precisely localized for 3 of the 4
+transitions (gap 3's real transition point is `0x6f115`, not `0x6f311`).
+A reasonable next step if continued: re-run §33's matcher with a looser
+cost threshold specifically inside these 4 now-confirmed-real-text
+regions to recover more dictionary names and sharpen the overlap-window
+boundaries further - not attempted here.
