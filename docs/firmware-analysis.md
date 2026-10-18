@@ -3046,3 +3046,87 @@ further concrete next step identified for this specific angle beyond what
 was already tried here; the ICSP hardware path remains the standing
 recommendation for anything requiring ground-truth resolution rather than
 further static analysis.
+
+---
+
+## 32. Is the lossy text zone and the 28-byte structured zone one unified encoding? Tested directly - a clean negative, but with a real boundary correction and new structural detail (2026-10-17)
+
+§25's text transcript and §27's structured-zone boundary appeared to
+overlap by up to ~2KB (`0x6f790`-`0x70060` sitting inside §25's
+`0x6e327`-`0x70120` extraction window), and both zones' anomalous bytes
+are bit-7-toggle pairs - raising the question of whether they're really
+one continuous custom-compressed stream rather than two separate
+phenomena. Tested directly, byte-by-byte, rather than theorized about.
+
+**The apparent overlap doesn't survive direct inspection - the real
+transition is sharp and sits at `0x6f804`, not a blurred 2KB region.**
+Scanning the confirmed text span (`0x6e50b`-`0x6f804`, 4,837 bytes) for
+the structured zone's defining fingerprint bytes (`0x06`/`0x86`/
+`0x1D`/`0x9D`, which can never mask to a printable letter): **zero
+occurrences anywhere.** Scanning the structured span (`0x6f804` onward)
+for any masked-printable run of 5+ characters: **zero matches** (longest
+run is 3 characters, well under the text zone's own hard 6-byte ceiling,
+§31). The last recognizable English fragment (ending "...drums...Wave",
+decoded from `0x6f7f0`-`0x6f7fd`) sits only 7 bytes before the first strict
+fingerprint byte at `0x6f804`. §27's originally-stated `0x6f790` start was
+itself an artifact of its 300-byte sliding-window autocorrelation score,
+which necessarily blurs a sharp transition by up to one window-width -
+not a real content overlap. **Correction to §27: the real content
+boundary is `0x6f804`, about 116 bytes later than previously stated.**
+
+**The 28-byte period's internal structure doesn't support the "7-byte
+sub-unit shared with the text zone" hypothesis either.** Fingerprint-byte
+occurrence histogrammed by position mod 7 across the whole structured
+zone is essentially flat (69-143 per residue out of 848 hits, no
+dominant one) - but the same bytes histogrammed **mod 4** show a sharp,
+real bias (366 and 331 hits at residues 1 and 2, vs. 96 and 55 at 0 and
+3). **The record's real internal granularity is 4-byte-word-aligned (7
+words x 4 bytes = 28), not 7-byte-periodic** - the 28=4x7 arithmetic
+coincidence does not correspond to a real shared mechanism with the text
+zone's insertion period; tested directly and rejected.
+
+**No RLE-style rule unifies both zones.** Text-zone insertions are always
+exactly one sentinel byte (`0x00`/`0x80` only, never a variable run
+length) - re-confirmed directly against `GrainGranny` (3 lossless
+insertions) and `BitReducton`/`BitReduction` (one genuine letter loss),
+both independently re-derived from raw bytes, not copied from the doc.
+Stripping the structured zone's full fingerprint-byte set and masking
+what remains produces only garbage dominated by the already-known
+counter-column ASCII values, not coherent words - a clean negative,
+independent of §27's own.
+
+**A genuine new structural refinement, found in the course of testing
+this (not what the task set out to find, but concrete and worth
+persisting)**: the structured phenomenon is not one contiguous block as
+§27 implied. Fine-grained (16-byte-window) density mapping shows a dense
+fingerprint run from `0x6f800`-`~0x6ff7f`, then a **previously-unflagged
+~96-byte near-all-zero gap at `0x6ff80`-`0x6ffe0`**, then the *same*
+fingerprint vocabulary resumes at reduced density from `0x6fff0` through
+`~0x700e0` - 128+ bytes past §27's stated `0x70060` end. Only after that
+does the already-known clean parameter-label text cluster begin
+(`0x70100`-`0x70183`: `"** Calibrating"`, `"Voice"`, `"Pan and Volume"`,
+`"Lowpass Filter"`, `"Waveshape Osc 1/2"`, `"**** Calibrating Done;
+Restart ****"` - independently reconfirming the fragment §20 already
+flagged at `0x70120`-`0x70160`). The fingerprint vocabulary briefly
+resumes once more immediately after that text (`0x70184`-`0x7018f`)
+before giving way to a visually distinct, genuinely clean small-integer
+table (mostly `0x00` with scattered small values like `0x01/0x03/0x09/
+0x10/0x18/0x64` - reads like real config/calibration values, structurally
+unlike the fingerprint pattern). **So the structured zone brackets the
+`0x70100` clean-text cluster on both sides, with an internal gap partway
+through** - a real, evidenced shape nobody had mapped before.
+
+**Where this leaves things**: a clean, honestly-reported negative on the
+unification hypothesis - the text zone and structured zone have
+completely disjoint anomalous-byte vocabularies, wildly different anomaly
+densities (~1-in-6/7 vs. 35-50%), and a sharp (not gradual or
+interleaved) transition. They're best treated as two separate, adjacent,
+well-characterized-on-their-own-terms zones, not one encoding scheme. The
+useful correction to carry forward is narrowing §27's boundaries
+(`0x6f790`-`0x70060` → real transition at `0x6f804`, real extent to at
+least `~0x700e0` with an internal gap at `0x6ff80`-`0x6ffe0`) rather than
+merging it with §25's text claim. Still unidentified: what the 28-byte
+structured records actually encode, what anchors the text zone's
+insertion period, and what the fingerprint-vocabulary bracketing around
+the `0x70100` text cluster means (plausibly framing/tag metadata around
+short embedded strings - flagged, not tested further here).
