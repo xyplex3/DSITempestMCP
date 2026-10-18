@@ -5136,3 +5136,119 @@ second UI-text zone; run the exact-boundary, cross-version sweep for
 Main's used-flash edge near `0x797a0`, mirroring §28's Voice
 methodology; investigate the regularly-spaced single-byte deviations in
 the `0xFF` tail region.
+
+---
+
+## 57. The full ~45KB OS 1.3 text pool transcribed systematically for the first time - a major structural surprise (the preset-name table is inside it too) plus the largest content recovery yet in this document (2026-10-18)
+
+Direct follow-up systematically transcribing the full ~45KB consolidated
+OS-1.3 UI-text pool (§53), which had only been spot-checked for specific
+known labels before. Built a 401-entry manual-vocabulary dictionary from
+all 8 available manual/addendum PDFs, ran the §50/§52-validated all-
+occurrences sliding-window matcher, and, critically, since the
+automated pass couldn't cheaply handle the zone's ~16 longest fragments,
+supplemented it with a full manual line-by-line read of the entire
+zone in both masked-ASCII and raw hex.
+
+**Refined zone boundary, correcting §53's explicitly-approximate
+figures**: the real legible-text onset is `0x6a600`, not `~0x69e00` -
+direct inspection shows `0x69e00`-`0x6a5f0` is binary noise, including a
+dense KSEG0/physical pointer-table run (`0x1D`/`0x9D`-prefixed 4-byte
+values at `0x6a480`-`0x6a5f0`, matching §53's own cited false-lead
+class). The end boundary at `0x75400` is reconfirmed exactly (last
+legible byte `0x753ff`, all-zero immediately after). Net span:
+`0x6a600`-`0x75400`, 44,544 bytes.
+
+**A major structural surprise, not reported anywhere before**: this
+zone's tail (`~0x73513`-`~0x747c0`) contains the **entire §29 454-name
+factory sample/preset list**, verbatim-matching that list exactly. The
+OS 1.3 reorganization didn't just consolidate settings/dialog text into
+one pool - **it also absorbed the previously-separate Sound-Bank-B
+preset-name table (§19-§29's own subject) into the same contiguous
+lossy region.** §53's own description of this zone's contents ("System-
+menu vocabulary... 80 MIDI Note labels... unrelated dialog/status/error
+strings") never mentioned the preset-name table being inside it.
+
+**The automated matcher's own coverage statistic (12.9%, 256 trustworthy
+words/1,710 hits/5,740 bytes) is an honestly-reported, explicit lower
+bound, not the true recovered fraction** - it excludes the ~23KB of
+fragments over the matcher's 150-character performance cutoff by
+design, many of which were separately hand-verified as genuine legible
+text. **The true recovered-content fraction, from the full hand-read
+pass, is closer to 55-60% of the zone** - by far the largest content
+recovery of any single pass in this document.
+
+**The recovered content, by category, is substantially larger than
+§53's spot-checks suggested**:
+
+- **A FAT-filesystem-style error-string table, genuinely new**:
+  `Invalid Drive`, `Drive Not Formatted`, `Invalid Directory`, `No More
+  Reentry`, `End of File`, `Access Denied`, `Write Protect`, `Invalid
+  FAT Type`, `CRC Error`, `Max Bars Reached`, and dozens more.
+- **The full known `Failed to read/write...` error table**, confirmed
+  complete in context for the first time.
+- **The 35-name modal scale table independently reconfirmed in 1.3.0**
+  (cross-build confirmation of §52's 1.5.0.2 finding) - 30 of 35 names
+  directly legible in order; `Dorian`/`Phrygian`/`Lydian`/`Mixolydian`/
+  `Locrian` were not located anywhere in this zone, a genuine open gap.
+- **All 80 `MIDI Note: Pad/Mute/Beat` labels confirmed again in full
+  context**, immediately followed by the cleanest run in this
+  transcript - **the complete 15-item Edit Function menu, in order,
+  nearly perfectly clean**, then the full Save/Load/Export menu.
+- **A genuinely new default abbreviated drum-kit pad-name table**:
+  `Kick2`, `SftSnr`, `HhTite`, `HhLse`, `HhFot`, `HhOpn`, `Ride`,
+  `RidBell`, `Splash`, `TomH/M/L`, `Shaker`, `CngaH/L`, `CgSlap`,
+  `BlockH/L`, `Cowbll`, plus generic category labels (`Synth`, `Bass`,
+  `Lead`, `Effect`, `Other`).
+- **A large, genuinely new per-sound parameter-label dump**, including
+  another reverse-manual-order Mod-Amount cluster (`Mod 8 Amount`
+  through `Mod 1 Amount`, matching the same convention §50/§52 found in
+  1.5.0.2) and the matching Env Release/Decay/Attack/Amount reverse-
+  order clusters.
+- **All 4 processor version labels confirmed together for the first
+  time** - `Main OS Version:`, `Voice OS Version:`, `Panel OS Version:`
+  (new - fills a gap §46 left with only 3 of 4 for 1.5.0.2), `Sam OS
+  Version:`.
+- **A large, genuinely new success/confirmation-message pool** (~40
+  messages): `Time Sig Change Successfully`, `Bars Deleted/Inserted/
+  Copied Successfully`, `System Parameters Reset Successfully`, a
+  calibration submenu, and a new `(Used:...)` conflict-message family
+  (`(Used:Snd)`, `(Used:Mute)`, `(Used:Beat)` - the manual only
+  documents the Pad form of this).
+- **A new OS-update/MIDI-dump status-message pool directly relevant to
+  this project's own motivating interest**: `Reading Project from
+  MIDI`, `Done - Please restart Tempest Now`, `*** SAM OS Loading ***`,
+  `*** Receiving New Sound/Project/Beat in RAM ***`, `*** Main/Voice/
+  Panel OS Loading ***`, `Project '...' loaded from MIDI`.
+- **The full Undo/Redo dialog cluster** (`Undo Beat`, `Undo All Snds`,
+  `Undo Sound`, time-signature/live-recording/bar-edit undo variants)
+  and the Copy Bar/Beat/Step editing dialog cluster, both genuinely new.
+- §45/§46/§51's already-known citations (status-byte/checksum/MIDI-
+  timeout errors, disk-formatting messages, the "OS MIDI Dump" strings)
+  all reconfirmed present in 1.3.0 for the first time, not previously
+  checked in this specific version.
+
+**Honest gaps, reported plainly**: the automated matcher's 12.9% figure
+needs to be read as a lower bound explicitly, not the real coverage - a
+future pass raising the fragment-length cutoff (with incremental output
+flushing, a real lesson learned the hard way this session after an
+unflushed first attempt ran 8+ minutes with zero output) could close
+most of the gap to the ~55-60% hand-read estimate. 5 of the 35 scale
+names remain unlocated in this zone. The ~6 binary sub-stretches within
+the zone (consistent by inspection with the already-documented 20-byte
+and 28-byte periodic-structure families) were not re-verified against
+those structures' decisive statistical batteries this session - a cheap
+follow-up if anyone wants to close that loop. The calibration-submenu
+reading is explicitly flagged as provisional, pending closer byte-level
+inspection of a dense, heavily-abbreviated run.
+
+**Where this leaves things**: by far the most content recovered from
+any single transcription pass in this document, plus a genuine
+structural surprise (the preset-name table living inside the OS-1.3
+settings-text pool) that changes the picture of what the 1.3
+reorganization actually did. Concrete next steps if continued: extend
+the automated matcher to handle longer fragments properly rather than
+relying on manual reading for them; locate the 5 missing scale names;
+cross-check the zone's internal binary sub-stretches against the
+already-published 20-byte/28-byte structure signatures to confirm (or
+correct) the inspection-based identification.
