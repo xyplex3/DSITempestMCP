@@ -4340,3 +4340,75 @@ zone; investigate the possible third lossy region starting `~0x72e00`;
 apply the length-bucket noise calibration established here to any
 future reuse of this technique against a common-vocabulary dictionary
 at comparable scale.
+
+---
+
+## 47. The UI-text zone confirmed present in all 6 known Main releases since launch, plus an old §19 open question resolved (2026-10-18)
+
+Direct follow-up checking the three intermediate Main releases (1.3.0,
+1.3.0.6, 1.4) for the same lossy UI-text zone §45/§46 found in 1.1.3,
+1.2.0.8, and 1.5.0.2. Calibrated the decisive statistical test (chi-
+square + max-clean-run-vs-shuffled-control) against 1.5.0.2's already-
+published numbers first, reproducing them exactly, before trusting the
+method on new data.
+
+**Confirmed present in all three intermediates, closing this out as a
+clean "present in every known Main release" result - all 6 independently-
+built versions spanning Dec 2011 to Aug 2017, no surprises.** Located via
+sliding-window density/chi-square scanning plus boundary refinement:
+1.3.0 at `0x6a58c`-`0x70800` (~25,204 bytes), 1.3.0.6 at `0x68a3c`-
+`0x6ece0` (~17,060 bytes), 1.4 at `0x69800`-`0x6fee0` (~26,336 bytes) -
+each approximate to roughly ±0x40-0x80 bytes (coarser than §46's byte-
+precise 1.5.0.2 figures; tightening these further is a cheap follow-up
+if exact boundaries matter later). The decisive test reproduces the
+known-positive signature on the large majority of representative
+sub-windows in every version (1.3.0: 8/8 at the 0.0th percentile; 1.3.0.6:
+7/9, the 2 exceptions being clean sub-tables; 1.4: 7/8, 1 exception a
+clean sub-table) - the same "mosaic of clean and lossy sub-tables"
+character already established, not a contradiction.
+
+**Content manually verified as the same category in all three, including
+a genuinely striking find in 1.4: the exact string that originally
+motivated this whole investigation.** 1.3.0 and 1.3.0.6 recover the same
+`Controller`/`Switch`/`Shift On+Play` settings vocabulary and Mod Matrix
+labels already seen elsewhere; 1.3.0.6 additionally recovers system/
+save-load messages (`"**** Main OS Loading ****"`, `"Sound saved to
+file:"`, `"Main/Voice/Panel OS Version:"`). **In 1.4, the recovered
+content includes `"Failed to read sequence data"` itself** - the string
+this entire firmware-analysis thread was originally motivated by
+(docs/firmware-analysis.md's own opening paragraph) - recovered in lossy
+form, sitting immediately alongside an unmistakable FatFs-style disk-
+error-code table (`"Invalid Drive"`, `"CRC Error"`, `"Invalid FAT
+Type"`, etc.) and a clean 12-string `"Failed to..."` sub-table embedded
+in the *middle* of the zone, not at either edge.
+
+**A real, useful structural note for anyone using the error table as a
+locating shortcut on a future version**: the clean `"Failed to..."`
+error-string table's position *relative to the zone* shifts release to
+release - immediately adjacent to the zone edge in 1.5.0.2 (§45), itself
+partially lossy in 1.3.0/1.3.0.6, and embedded in the zone's middle in
+1.4. Useful as a starting anchor, but not reliably at the boundary.
+
+**An old, explicitly-flagged open question from §19 resolved as a side
+effect of this scan**: §19 asked but never resolved whether the Sound-
+Bank-B preset-name block "moved to a new offset by 1.3.0 or was genuinely
+deleted." While scanning for the UI-text zone, a second, separate
+elevated-density region was found in each intermediate version, clearly
+distinct from the UI-text zone (separated by several KB of quiet
+content) and confirmed by content inspection to be the already-known
+preset block (`White Noise`, `Cicada`, `Chain Link`, `SCI Tom Cart
+Kick`, `LM-1 Bass Drum`, etc.) at its own new relinked offset in every
+version: 1.3.0 at `~0x73400`+, 1.3.0.6 at `~0x71900`-`0x72e00`, 1.4 at
+`~0x73400`+, and (checked for completeness) 1.5.0.2 at `~0x75400`+.
+**The block was moved, not deleted** - confirmed by unambiguous string
+matches in every version, though not independently decisive-tested
+statistically in this pass.
+
+**Where this leaves things**: the second UI-text zone's "present since
+launch" status is now established across the entire known release
+history, not just 3 of 6 samples. §19's old open question is closed.
+Concrete next steps if continued: tighten the three new boundary
+estimates to byte-precision the way §46 did for 1.5.0.2; run the
+decisive statistical test on the relocated preset block in each
+intermediate version to confirm it rather than relying on string-match
+alone.
