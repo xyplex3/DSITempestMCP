@@ -2148,7 +2148,7 @@ standing recommendation, unchanged by this result.
 ## 23. The preset block is much bigger than §20 found - 5.4KB more readable text, a second content category, and a separate unexplained binary structure (2026-10-17)
 
 Follow-up to §20, decoding what follows the confirmed 42-entry clean name
-table ("Flam" ending at `0x6e50b`). §20's leading hypothesis - that what
+table ("Flam" starting at `0x6e50b`). §20's leading hypothesis - that what
 follows is `name + binary synthesis-parameter bytes` - **is not
 supported by the actual data.**
 
@@ -2222,6 +2222,94 @@ question.
 
 ---
 
+## 25. The curated transcript: the preset block is far bigger than any prior estimate, plus a clean, confirmed read of the folder/directory strings (2026-10-17)
+
+Follow-up to §23's "produce a clean curated transcript" next step - a full
+manual reconciliation of the entire lossy zone (`0x6e50b`-`~0x6f800`)
+against expected drum/instrument vocabulary, confidence-graded per entry
+([CLEAN] / [RECON, 1-2 letters inferred] / [UNRECOVERABLE]), using the same
+`byte & 0x7F` masking confirmed correct in §23. Independently re-derived
+§20's baseline first as a pipeline check: the 42-entry clean table
+reproduces byte-for-byte (41 presets + `Osc Off`), and decode-density
+figures for the clean table (81.0%), lossy zone (68.1%), and folder cluster
+(68.2%) are consistent with §23's published numbers within boundary
+rounding.
+
+**The total count is substantially larger than any previous estimate in
+this document.** The lossy zone alone yields roughly 160-185 distinct
+name-slots across three confidence tiers (~15-20 fully clean with no
+letters guessed; ~125-140 high-confidence single/double-letter
+reconstructions; ~20-25 explicitly flagged as "likely a name,
+unrecoverable" rather than guessed). Combined with the 43 already-clean
+entries from §20/§23 (42-entry table + `Flam`), **the whole 29,713-byte
+block holds on the order of 200-230 distinct preset/patch names** - not
+§20's 41, not even §23's "well over 60." Every name §23 already confirmed
+(`GrainGranny`, `Bck Scatter`, `Heavy Open`, `Bass Closed`, `Dark Open`,
+`Loose Open Hat`, `LM-1 Closed`, `LinnDrum HH Open`, `Tight Studio Hat`,
+`Crack Hat`, `Crunch`, `Distorted Bump`, `Reversed`, `Piano1`, `Clarinet`,
+`Vocal1`, `Vocal2`, `Harp`, `Oboe`, `WWind`, `BellOrg`, `SynBell`, `VS
+23`/`26`/`32`/`84`-`92`) was independently re-derived here, cross-validating
+both sessions' methods against each other. New material recovered at
+volume includes large internally-consistent naming families not previously
+documented - parallel Hi/Mid/Lo or Hi/Lo tom-and-cymbal series (`Nice
+Hi`/`Nice Mid`/`Nice Floor`, `Hi Maple`/`Mid Maple`/`Low Maple`, `Blue Tom
+Hi`/`Blue Tom Lo`, a `808ish`/`909ish`/`LinnDrum`/`LM-1` model-prefix
+pattern repeated across toms/congas/cowbells/claps/cabasa/tambourine), a
+real-world percussion-instrument cluster (`Guiro`, `Castanet`, `Cabasa`,
+`Udu`, `Tabla`, `Jam Block`), and a small apparent additive-synthesis
+sub-cluster (`Partials 1`, `Bell Partials`) sitting right before the `VS
+nn` labels.
+
+**Honest limitation, stated plainly rather than papered over**: these are
+uncertainty bands, not point estimates, and this is "the honest limit of
+what per-byte masking plus manual English-word reconciliation can recover
+from data this lossy" (~32% non-printable after masking). The underlying
+deletion mechanism - confirmed again here, not just in §23: literal single
+letters missing mid-word, not corrupted-in-place - remains unidentified;
+resolving it would upgrade most low-confidence reads to confident ones, but
+nobody has found it yet.
+
+**A genuinely new, clean finding: the nearby folder/category cluster
+(`0x70be5`-`0x70d1c`, previously only guessed at in §20 as "likely
+filesystem/directory strings") decodes cleanly and fully under the same
+masking scheme**, at notably higher fidelity than the preset zone (matching
+its slightly higher measured density): category folders `Kicks`, `Snare`,
+`HiHats`, `Toms`, `Cymbals`, `Percussion`; storage locations `User
+1`-`User 4` and `Factory`; numbered folders `Beats 1`-`Beats 9` and
+`Projects 1`-`Projects 9` (all nine numbers individually legible in both
+series); generic unnumbered labels `Beats`, `Projects`, `Sounds`. This
+promotes §20's speculative directory-string guess to a confirmed read, with
+the literal strings now in hand.
+
+**This directly answers §19/§20/§23's recurring "does the count fit Sound
+Bank B" question, and the answer is a clean negative on the specific
+framing, with a weaker fallback still open.** The numbered folders are
+`Beats 1`-`Beats 9` / `Projects 1`-`Projects 9` - a 1-9 **storage-location**
+numbering (almost certainly SD-card/USB-mass-storage directory names:
+`/Factory/Beats 1/`, etc.), not a "B1"-"B16" per-Beat sound-slot label
+anywhere in this cluster. There is no direct numeric structure here to test
+the ~200-230 preset count against the way prior sections hoped. The loose
+arithmetic (9 factory Beats x 16 new slots/Beat = 144, same order of
+magnitude as ~160-185 new names found) is at best weak circumstantial
+support, not confirmation - the same "plausible, not structurally proven"
+status §20 and §23 already assigned the Sound-Bank-B hypothesis, now more
+precisely characterized rather than strengthened or weakened.
+
+**Where this leaves things**: the preset-name content in Main 1.2.0.8 is
+now as thoroughly transcribed as per-byte masking and manual reconciliation
+can take it, with an honestly-bounded count (~200-230) rather than a false-
+precision single number. The folder-string question from §20 is closed,
+confirmed rather than guessed. Concrete next steps if continued: identify
+the underlying character-deletion mechanism (would resolve most remaining
+low-confidence/unrecoverable entries at once, rather than one at a time);
+check whether a real factory preset-name list exists anywhere externally
+(a Tempest unit's own display, or TempestEdit's bundled data) to
+disambiguate the ~20-25 unrecoverable fragments against ground truth; the
+`0x6f800`+ periodic binary structure (§23) remains its own open question,
+untouched by this transcript work.
+
+---
+
 ## 24. Voice's firmware shows the same growth pattern as Main, but the new content isn't readable text - a clean, calibrated negative (2026-10-17)
 
 Applied §19's feature-anchored version-diffing technique to Voice instead
@@ -2281,3 +2369,181 @@ image for this release pair - that content is still only characterized in
 Main (§19/§20/§23). Not pursued further this session: whether Voice shows
 its own recurring boundary offset across other version pairs (mirroring
 §19's `0x76800` Main side-finding) remains untested.
+
+---
+
+## 26. The GRC bitmap-candidate sweep, run against Main for the first time - a clean, better-controlled negative, plus new cross-build evidence for the unexplained periodic structure (2026-10-17)
+
+§16 flagged Main as the natural next step for the confirmed GRC
+bitmap-asset search method (§13), since that method had only ever been run
+against Panel. Done this session, using Main 1.5.0.2 (524,609 decoded
+bytes), with the already-characterized 1.2.0.8-only preset block
+(`0x6ad09`-`0x7211a`, §19/§20/§23/§25) excluded as already-known text.
+
+**Re-derived the 28-byte `GFX_RESOURCE_HDR` field layout directly from the
+`mla_gfx` source** (not reused from memory) and cross-checked it against a
+real GRC v4.00.39 compiler-emitted instance (`luciodj/GTSU-2.0`'s
+`flower_reference.c`) - confirms the 28-byte total specifically requires
+XC32's default 4-byte enum sizing (not `-fshort-enums`, which would make it
+24 bytes), consistent with §13's original figure.
+
+**A clean negative, more rigorously controlled than any prior bitmap
+search in this document.** Direct structural header search across every
+offset in the file, gated on valid `type`/width/height/colorDepth
+combinations: **0 hits at 4-byte alignment** (131,146 candidate positions -
+the only alignment a compiler would actually emit such a struct at) in
+both a loose and a strict (pointer-validity-gated) tier. At arbitrary byte
+alignment, 6 loose hits exist, but 0 of 6 are even 4-byte aligned and only
+2 of 6 are 2-byte aligned - disqualified on structural grounds alone, and
+all 6 also fail the strict pointer gate. **Checked against two independent
+noise baselines** (plain `os.urandom`, and the real file's own bytes
+shuffled - a fairer control that preserves the real byte-value histogram,
+e.g. `0x00`'s high frequency from branch-delay-slot NOPs): the real file's
+6-loose/0-strict result sits inside the shuffled-control's own noise band
+(mean 0.4 loose hits per trial, 0 strict in every trial), not above it.
+Directly inspected all 6 raw windows; none are remotely struct-shaped (one
+is a flat repeating `01 00 00 01 01 01 01 01 00…` pattern).
+
+**The padding-tail island check (§16's method, applied to Main's own tail
+for the first time) is also a clean negative, same shape as Panel's.**
+Main's real content ends at exactly decoded offset `0x7977c` (497,532) -
+independently reconfirming §5.6's previously-cited figure, now directly in
+1.5.0.2 specifically. 29 non-`0xFF` islands ≥4 bytes found (vs. Panel's
+23); every size-matched candidate simultaneously fits several unrelated
+(width, height, bpp) combinations at once (the same demonstrated-coincidence
+pattern §16 already established), and the two best size matches render as
+pure unstructured static (entropy 4.3-5.1 bits/byte, no edges or symmetry)
+when drawn as literal pixel grids under the confirmed packing rules -
+visually identical in character to §16's Panel negatives.
+
+**A genuinely new side-finding, not a bitmap but worth recording: the same
+84-byte periodicity first found in §23's 1.2.0.8 preset block recurs
+independently in 1.5.0.2's padding tail, in a completely different file
+region, in a build 5 years later.** The single biggest tail island (1832
+bytes, `0x79054`-`0x7977c`) shows a real, decisive periodicity - byte-exact
+match at lag 84 for 53.9% of positions (lag 168 at 45.9%) - which rules it
+in as structured, non-random data and simultaneously rules it out as a
+bitmap (no real icon's pixel data would show 54% exact-byte self-similarity
+at a fixed stride). Finding the identical stride recurring in an unrelated
+location and build is new evidence this periodic structure is a general,
+recurring feature of Main's build process - not a one-off artifact unique
+to the single 1.2.0.8 preset block where it was first noticed. See §27 for
+a focused follow-up on what that stride actually is.
+
+**Where this leaves things**: closes out §16's "check Main too" next step
+with a second, better-controlled negative (now using 4-byte alignment as
+an explicit discriminator, which Panel's island-only search didn't test).
+Extends rather than contradicts the standing conclusion that this firmware
+most likely doesn't use the MLA/GRC bitmap pipeline at all, consistent with
+§17's no-string-asset-format finding and §12's touchscreen-vs-actual-
+hardware mismatch theory. The 84-byte-stride recurrence is the one
+genuinely new, unexplained structural fact this search surfaced -
+immediately picked up in §27.
+
+---
+
+## 27. The 84-byte structure resolved: it's actually a 28-byte period (84 is its 3rd harmonic), precisely bounded, and four concrete identity hypotheses all cleanly rejected (2026-10-17)
+
+Direct follow-up to §23's open "84-byte periodic binary structure" question,
+re-examining it with autocorrelation analysis rather than the original
+4-step eyeball check, and testing four specific identity hypotheses against
+the actual data.
+
+**Correction to §23: the true period is 28 bytes, not 84 - 84 is simply the
+3rd harmonic.** §23's "verified across multiple increments" was only ever
+4 steps; walking the pattern one step further breaks it immediately (at
+`0x6f957`, expected `0x66`, actual `0x44`). Control-normalized
+autocorrelation (`P(data[i] == data[i+lag])`, compared against a same-size
+control region elsewhere in the file to rule out trivial zero-density
+bias) shows the real dominant signal at **lag 28** (score 0.2825 vs. a
+0.0585 control, a 4.8x elevation), with lag 56/84/112/168 all appearing as
+harmonics of it, not independent periods. Column-by-column inspection of
+28-byte records confirms the real shape: record column 0 holds a value
+constant across 3 consecutive records, then increments by 1 - exactly the
+"+1 every 84 bytes" signal §23 saw, now correctly attributed to one column
+of a 28-byte record rather than a bare 84-byte stride.
+
+**The structure's real extent is both longer in one respect and shorter in
+another than §23 implied.** The clean "+1 every 3 records" counter pattern
+persists for about 58-59 records (≈1650 bytes, `0x6f918`-`0x6ff70`, values
+`0x65` through `0x76`) before dissolving into non-monotonic noise. A finer
+sliding-window (300-byte) version of the lag-28 score pins the genuinely-
+elevated zone precisely to **`0x6f790`-`0x70060`** (score 0.3-0.57 vs. a
+~0.03-0.06 control baseline) - narrower than previously assumed: this
+structure does **not** extend all the way to the folder cluster at
+`0x70be5` (§20/§25); it ends roughly 2.6KB before it, inside what was
+previously undifferentiated as "unexplained gap."
+
+**A genuine, non-random byte-value fingerprint, not identified but real.**
+Byte-frequency histogram of the zone vs. the whole-file baseline shows
+sharp, reproducible elevation for a specific set of values - `0x1D`/`0x9D`
+(8-8.4x), `0x06`/`0x86` (4.9-11x), `0x55`/`0xAA` (8-14.8x), `0xBB`/`0x5D`
+(13.5-14x), `0x6E` (5.3x). `0x1D`/`0x9D` and `0x06`/`0x86` in particular
+occur at near-1:1 ratios with each other (251 vs. 244; 213 vs. 222) - the
+same low-7-bit value with the high bit toggling roughly equally often, a
+real and reproducible pattern, not noise - though still unidentified as to
+mechanism or purpose. (The `0x1D`/`0x9D` elevation itself remains the
+coincidence §23 already flagged as unconfirmed, not newly resolved here -
+this project's own confirmed Program Flash physical/virtual high byte, but
+no connection beyond the coincidence has been demonstrated.)
+
+**Four concrete identity hypotheses tested directly against the data - all
+four cleanly rejected, with resolved-value evidence in every case, not just
+counts:**
+
+1. **Real MIPS32 code.** Per-word capstone decode density is genuinely
+   depressed (29.4%, matching §23's cited 28%) only for roughly the first
+   `0x157` bytes of the zone - immediately adjacent sub-regions are *not*
+   equally depressed (52.8%-50.9%, close to this build's normal ~56-58%
+   code baseline), narrowing rather than reversing §23's claim. Direct
+   sequential disassembly of a representative span shows semantically
+   incoherent decodes (`jalx`/`bnel`/`swc2`/`ldc2`/`sdc1` with no consistent
+   register flow) - confirms genuinely not code, independent of the
+   density number alone.
+2. **Readable text, any known scheme.** Plain `& 0x7F` masking gives 42.1%
+   printable - exactly this build's own general file-wide baseline, i.e.
+   *not elevated at all*, unlike the genuinely-elevated zone immediately
+   before it (§23/§25's 61.5%+). The wire-protocol's collector-first 7+1
+   scheme, independently re-tested at all 8 byte-phase offsets specifically
+   on this zone (not reused from the earlier text-zone negative): flat
+   12.2%-14.7% at every phase, no peak anywhere.
+3. **A table of literal Program Flash addresses** (this project's own
+   confirmed `0x9D`/`0x1D` physical/virtual high byte). Exhaustive
+   big-endian 4-byte-aligned scan: 0/1273 valid - actually below a matched
+   control region elsewhere in the file (2 hits). Little-endian surfaced
+   14/1273 candidates (vs. 3/1273 in control); every one directly inspected
+   at its implied target per this project's standing rule to check resolved
+   values, not just counts - each resolves to more of the same unexplained
+   dense pattern, not a header or table entry. This is the same
+   already-catalogued "sliding window over structured data" false-positive
+   shape from §21/§22, observed here a 4th independent time.
+4. **A `SoundParams`-style synthesis-parameter record** (cross-referenced
+   directly against `internal/sysex/soundparams.go`: 121 confirmed
+   parameters, bit-level packed across a ≥96-byte body). Categorically
+   different from what's observed - clean, byte-aligned, columnar,
+   whole-byte-valued fields, not a bit-interleaved layout. Clean negative,
+   no plausible correspondence.
+
+**A side-observation, flagged but not characterized further**: an earlier
+span in the same unique block (`~0x6d8fb`-`0x6e0cb`) shows an even higher
+lag-28 autocorrelation score (up to 0.93) - but direct inspection shows
+it's mostly sparse `0x00` runs with occasional nonzero bytes, plausibly a
+different, less-interesting sparse-data autocorrelation artifact rather
+than the same dense columnar phenomenon as the main zone.
+
+**Where this leaves things**: a genuine dead end on identity, but with
+real, reproducible refinements - confirmed non-random by two independent
+methods (control-normalized autocorrelation, control-normalized
+byte-frequency fingerprint), confirmed as a 28-byte (not 84-byte) primary
+period, precisely bounded to `0x6f790`-`0x70060` rather than vaguely "from
+`0x6f800` onward," and now also confirmed to recur independently in a
+different build and file location (§26). No fifth hypothesis presented
+itself from the actual byte patterns; per this project's own standard,
+forcing one without data to support it isn't warranted. Concrete next step
+if continued: test the byte-frequency fingerprint against encoding schemes
+not yet tried (nibble-swap, a different collector-group size than 7+1, a
+per-2-byte rather than per-8-byte collector) rather than re-testing
+already-ruled-out ones; the ICSP hardware path (§7 item 5) would also allow
+a live calibration/parameter dump to be captured and diffed directly
+against this exact byte range, a stronger test than further static
+analysis is likely to produce.
