@@ -1594,3 +1594,57 @@ replicated independently 6 times rather than resting on one build. The
 ICSP hardware test (§7 item 5) is unchanged as the standing
 recommendation, more strongly so now that the computational angle has
 been tested as thoroughly as 6 independent binaries allow.
+
+---
+
+## 15. Main's structural profile, and the strongest "real code" signal found anywhere in this investigation (2026-10-17)
+
+Follow-up applying the two diagnostics just developed on Panel (§5.6's
+correction entry: whole-file prologue/`jr $ra` census; base-address-
+independent branch-target-in-bounds test) to Main instead.
+
+**Main's structural profile is sharply different from Panel's.** Panel has
+7 function prologues, all clustered in its first 1KB, and zero `jr $ra`
+(function return) anywhere in 65,577 bytes. **Main has 29 prologues and 21
+`jr $ra` instructions, scattered across most of the 524,609-byte file**
+(offsets `0x10` through `0x684b8`, and `0x3e8` through `0x69ff8`
+respectively) - a genuinely different, much more conventional
+compiled-code profile. (Two prologues, at `0x16578` and `0x49990`, have
+implausibly huge stack-frame immediates (-32384/-32542 bytes) and are
+flagged as likely coincidental decodes, not real.)
+
+**The headline result: a 256KB region of Main is essentially 100% real
+code by a base-address-independent test - the strongest such signal found
+anywhere in this whole investigation.** Branch targets are PC-relative, so
+checking whether they land inside the file's own byte range needs no base-
+address assumption at all. Whole-file: 11,111 branches decoded, 92.49%
+in-bounds overall. **File offsets `0x20000` through `0x61800` (~256KB,
+about half the file) are 100.000% in-bounds across every single 8KB bucket
+in that span** (~4,045 branches, zero landing outside the file) - markedly
+cleaner than the 70-90%-ish baseline everywhere else, and the diagnostic
+that actually discriminates signal from noise here (decode density alone
+stays flat 60-73% across this whole region and does not distinguish it,
+unlike Panel). The tail end (`0x7e000`-`0x80000`) drops to 25% in-bounds
+and ~16% decode density, independently corroborating §5.6's already-
+documented erased-flash-padding finding for that region.
+
+**Both known jump tables - the ones that already failed numerically against
+the confirmed base (§5.6, §14) - sit in this high-confidence region, not
+in noise.** The `0x3d0` table's local ±1KB window is 14/14 (100%)
+in-bounds. The `0x603c0` table's local ±1KB window is 38/39 (97.4%)
+in-bounds, and sits right at the edge of the 256KB clean block (a function
+prologue at `0x60374` sits immediately beside it too). **This directly
+rules out "the surrounding code is itself a coincidental decode" as the
+explanation for why these tables fail** - the same explanation that did
+turn out to be correct for Panel's `0x37d0` site in §5.6's correction.
+Both sites are real code; the base-address *model* remains the open
+question, not code identification. This reinforces, rather than
+undermines, the standing §5.6/§14 conclusion.
+
+**Where this leaves things**: the `0x20000`-`0x61800` block is now the
+single best-supported "this is real code" region found anywhere in Main
+or Panel by any method in this document - not a new base-address guess
+(none was tested or proposed from it), but the first place any future
+disassembly attempt should point once a real base address is available
+(from ICSP or otherwise), since it's already shown to be internally
+self-consistent independent of any addressing assumption.
