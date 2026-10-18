@@ -4208,3 +4208,135 @@ the legible-but-still-corrupted masked dumps into a curated, confidence-
 graded result; check Main 1.3.0/1.3.0.6/1.4 for the same zone (cheap,
 likely confirmatory, not yet done); Voice and SAM were out of scope here
 and remain unchecked.
+
+---
+
+## 46. A curated, manual-validated transcript of the second UI-text zone - 166 confirmed terms, a refined boundary, a possible third zone, and a real methodological lesson (2026-10-18)
+
+Direct follow-up to §45, building the proposed §33-style fuzzy-matched
+transcript - this time against a dictionary built from the real Tempest
+manual's own vocabulary (404 entries, extracted via `pdftotext` from the
+manual and all 5 addendum PDFs) rather than §29's preset-name list.
+
+**Zone boundary refined, correcting §45's explicitly-approximate
+figures - the same kind of correction §32 made for the other zone.**
+The first actual anomalous control byte is `0x6c515` (22 bytes later
+than §45's `0x6c4fb`, which was clean NUL padding and legible text, not
+yet lossy). The zone's real end is `0x720e5` - confirmed via a
+per-256-byte control-byte-density scan showing density dropping to
+0.00-0.08 immediately after, sustained for ~1700 bytes, with the last
+readable word (`"...End:"`) ending right at the boundary and
+IEEE-754-float-looking binary immediately after. Net span: 23,530
+bytes, matching §45's ~23.5KB estimate closely either way it's measured.
+**A possible third lossy region was flagged, not yet investigated**:
+control-byte density rises again starting around `0x72e00`, after the
+~1700-byte quiet stretch - an open lead for a future session.
+
+**A real methodological lesson, worth recording for any future reuse of
+this alignment-matching technique at this scale.** Checked real-vs-
+shuffled-control hit rates bucketed by dictionary-word length: words of
+8 characters or fewer are chance-saturated (100% hit rate in both real
+and shuffled controls - meaningless alone, at this zone's size against a
+~400-word common-English-vocabulary dictionary), while 9-13-character
+words show a real/shuffled ratio of ~112x and 14+-character words show
+an effectively infinite ratio (0/4 shuffled trials ever matched). This
+wasn't an issue at §33's smaller 4.8KB preset-name zone with its
+unusual-sample-name dictionary - it's a real, scale-and-dictionary-
+dependent calibration need, not a one-off bug. A real bug was also found
+and fixed during development: the matcher initially let a *run* of 2+
+consecutive control bytes count as multiple independent free "character-
+destroyed" events, producing a false perfect match on `"Choke 1"` by
+eating an unrelated NUL-terminator run instead of reading an actual
+digit - fixed by reusing `decode_preset_text.py`'s already-validated
+convention (§34) that runs of 2+ control bytes are hard fragment
+boundaries, not interior corruption. This dropped raw matches from 332
+to 273 and fixed the specific case on inspection.
+
+**Results, split into trustworthy tiers rather than one flat match
+rate**: 166 distinct dictionary entries confirmed via two independent,
+individually-trustworthy routes - 154 by word length alone (≥9
+characters, cost≤2, real/shuffled ratio ≥112x) and 18 in-order section
+clusters (3+ consecutive manual-list entries at closely-spaced,
+monotonically increasing offsets - the same "exact sequential order"
+corroboration standard §33/§34 already established) totaling 78 entries.
+107 raw short-word hits are explicitly flagged as untrustworthy at this
+scale and not counted. 131 dictionary entries found no confident match
+anywhere in this specific zone (expected for prose-derived or UI-state
+phrases this particular region simply doesn't display).
+
+**The strongest evidence - 18 hand-verifiable section clusters**,
+several confirmed byte-for-byte against the raw masked bytes directly:
+the full System Actions calibration cluster (`"Calibrate Analog
+Oscillators and Filters"`, `"Calibrate Slider 1 and 2 Position"`,
+`"Calibrate Drumpads"`, `"Reset System Parameters"`, all cost=0 at
+`0x6d621`-`0x6d69c`); the Save/Load cluster (`"Save Sound"`, `"Save
+Beat"`, `"Save Project"`, `"Load File"`, all cost=0); and - the clearest
+single confirmation in this whole transcript - the **entire 15-item Edit
+Function menu, in order, almost perfectly clean** at `0x6d70d`-`0x6d802`
+(`"Copy Sound"`, `"Initialize Sound"`, `"Rename Sound"`, `"Copy Beat"`,
+`"Initialize Beat"`, `"Rename Beat"`, `"Copy Bars"`, `"Insert Bars into
+Beat"`, `"Delete Bars from Beat"`, `"Change Time Signature of Beat"`,
+`"Rename Project"`, `"Initialize Project"`, `"Rename Playlist"`, `"Copy
+Playlist"` - several more items legible by eye than the dictionary alone
+reported, since the dictionary didn't contain every exact phrase).
+
+**Genuinely new vocabulary recovered beyond §45's original spot-checks,
+hand-verified byte-by-byte - the highest-value new content, not just
+dictionary confirmation**:
+
+- **A complete `MIDI Note: Pad/Mute/Beat` label table** (~1.3KB,
+  `0x6cf80`-`~0x6d450`+): `"MIDI Note: Pad A1"` through `"...Pad A16"`,
+  then `"...Pad B1"`-`"...Pad B16"`, then `"...Mute A1"`-`"...Mute
+  A16"`, then `"...Mute B1"`-`"...Mute B16"`, then `"...Beat 1"` through
+  at least `"...Beat 5"` (pattern strongly implies continuing to Beat
+  16) - this directly confirms and precisely locates §45's "MIDI
+  pad-to-note mapping labels" citation, previously only spot-checked.
+- **Version-string labels for all 4 of this project's known
+  processors**, not just Main: `"Main OS Version:"` (with a space -
+  corrects an initial dictionary guess), `"...Voice OS Ver[sion:]"`, and
+  `"Sam OS Version:"`, all stored together at `0x7021c`-`~0x70268`.
+- **Two fully clean sentences** immediately after, zero control bytes at
+  all (`0x70268`-`0x702e6`): `"Press 'Soft Key 1' to save current sound
+  as Init Sound template"` and `"...to export Init Sound template over
+  MIDI"` - a third sighting of this zone's own "mosaic of clean and
+  lossy sub-tables" character, already noted in §45.
+- **New, previously-undocumented error strings** (`0x6c5a0`-`0x6c620`):
+  `"Failed to read song version"`, `"Failed to read song params"`,
+  `"Failed to write song param[s]"`, `"Not enough free sound slot[s]"`.
+- **New dialog template sentences**: save-dialog repeat prompts
+  (`"Press 'Again...' to Save another Sound/Beat..."`, `0x715ef`);
+  calibration instructions (`"Unplug all audio cables from Tempest
+  before calibrating"`, `0x70d56`); an erase-notes dialog
+  (`"Hit pad to erase its notes..."`/`"Hit 'Erase All Notes' to erase
+  entire sequence..."`, `0x71aa0`); a copy/swap dialog plus a new error
+  (`"Error: Invalid bar!"`, `0x71c84`); a revert-to-default dialog
+  (`"Hit pad to restore another sound to original params"`, `0x718a7`).
+- **Both long and abbreviated forms of the same labels found close
+  together** (`0x72050`-`0x72093`): `"Choke Pad 1"`/abbreviated `"...Pd
+  2"` alongside separate `"Choke1"`/`"Choke 2"` forms, plus `"Voce
+  Assgn"` (abbreviated "Voice Assign") - consistent with the manual's
+  own confirmed convention (the Rename Beat menu item) that Tempest
+  stores both long and short display forms for some labels.
+
+**An honest note on what's unmatched**: several of the longest
+unmatched fragments (1691 and 1536 bytes, at `0x6df32` and `0x6f751`)
+turned out on inspection to be genuinely different, dense binary data -
+not more corrupted prose the dictionary simply missed - plausibly
+similar in character to §27's still-unidentified structure elsewhere in
+Main, not investigated further here. This matters for interpreting the
+match-rate honestly: the dictionary's shortfall isn't all unrecovered
+English text.
+
+**Where this leaves things**: a real, substantial, independently
+cross-checked transcript of a second major UI-text pool - 166 confirmed
+terms plus a genuinely new, hand-verified cache of dialog/error text and
+the full pad-note-label table, none of which existed in this document
+before today. Concrete next steps if continued: a "report all
+occurrences, not just the best match" matcher pass to resolve the
+Osc/Mod-Amount digit ambiguity (a known limitation of this specific
+pass, not evidence of lost data); extend the dictionary with the
+newly-found firmware-native sentences and re-run to explain more of the
+zone; investigate the possible third lossy region starting `~0x72e00`;
+apply the length-bucket noise calibration established here to any
+future reuse of this technique against a common-vocabulary dictionary
+at comparable scale.
