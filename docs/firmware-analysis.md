@@ -2142,3 +2142,80 @@ one compiled object, start of another" over other explanations) - not yet
 attempted, would benefit from a real control-flow view rather than raw
 per-word decoding. The ICSP hardware path (§7 item 5) remains the
 standing recommendation, unchanged by this result.
+
+---
+
+## 23. The preset block is much bigger than §20 found - 5.4KB more readable text, a second content category, and a separate unexplained binary structure (2026-10-17)
+
+Follow-up to §20, decoding what follows the confirmed 42-entry clean name
+table ("Flam" ending at `0x6e50b`). §20's leading hypothesis - that what
+follows is `name + binary synthesis-parameter bytes` - **is not
+supported by the actual data.**
+
+**What actually follows is ~5.4KB more readable text** (`0x6e50b`-
+`~0x6f800`), recovered via **plain per-byte high-bit masking** (`byte &
+0x7F`) - critically, *not* the wire-protocol's grouped collector-first
+scheme, which was independently re-tested at all 8 phase offsets here and
+confirmed wrong (produces worse garbage than plain masking, every time).
+This is a real, calibrated signal, not an illusion: masked-printable
+density is 61.5% overall in this zone (70.3% at its densest), clearly
+above both this file's own general baseline (~42-43% in two unrelated
+regions checked) and the pre-name-table portion of the same block (30.4%)
+
+- while still well below the confirmed clean table's own 81.0%, meaning
+this zone is readable but genuinely lossy, not clean.
+
+**Dozens more real preset names recovered**, continuing the same style as
+§20's confirmed 41: drum/percussion names (`Heavy Open`, `Bass Closed`,
+`Dark Open`, `Trash Hat`, `Loose Open Hat`, `LM-1 Closed`, `LinnDrum HH
+Open`, `Tight Studio Hat`, `Crack Hat`) plus distortion/texture names
+(`GrainGranny`, `BitReduction`, `Bck Scatter`, `Crunch`, `Distorted
+Bump`, `Reversed`). **A second, distinct content category emerges partway
+through**: a cluster of melodic/vocal/wind instrument names (`Piano1`,
+`Clarinet`, `Vocal1`, `Vocal2`, `Harp`, `Oboe`, `WWind`, `BellOrg`,
+`SynBell`) interspersed with numbered `VS nn` labels (`VS 23`, `VS 26`,
+`VS 32`, `VS 84`-`VS 92`) - plausibly vector-synthesis patch names, a
+genuinely different category than the drum/noise presets before it, not
+further characterized.
+
+**The lossy encoding itself remains unexplained** - roughly 38.5% of
+bytes in this zone don't mask to printable ASCII, dominated by `0x00`
+(~36% of dropouts) and `0x80` (~25%). At least one fragment shows a
+single mid-word letter missing entirely (confirmed directly against the
+decoded bytes) rather than merely corrupted, meaning this isn't pure
+bit-corruption of an otherwise-intact string - some
+compression/deletion mechanism is also in play. Not identified.
+
+**No fixed-size name+parameter-record stride exists anywhere in this
+zone** - the task's original cross-reference against the confirmed
+121-entry `SoundParams` table (`internal/sysex/soundparams.go`) is moot,
+not just negative: there's no "name followed by a parameter block"
+pattern to measure a stride on in the first place. Word lengths vary
+continuously and gaps between printable runs track the corruption's own
+short dropout periodicity, not record boundaries.
+
+**A separate, genuinely periodic binary structure exists right where the
+readable zone ends** (`~0x6f800` onward, density dropping back to
+baseline). At 4-byte-aligned offsets, one byte increments by exactly 1
+every **exactly 84 bytes** (empirically verified across multiple
+increments: `0x62` at `0x6f807`, `0x63` at `0x6f85b`, `0x64` at
+`0x6f8af`, `0x65` at `0x6f903` - each `+0x54`). This incrementing byte is
+frequently paired with `0x1D` or `0x9D` in the preceding position -
+**flagged explicitly as a noted coincidence, not a confirmed connection**,
+since `0x1D`/`0x9D` are this project's own confirmed Program Flash
+physical/virtual high byte (§5.6) - worth another look, not a conclusion
+on its own. Capstone decode density here is only 28% - not code, not
+text either. An independent, unresolved structural question, separate
+from the preset-name question.
+
+**Where this leaves things**: the readable content in Main 1.2.0.8 is
+substantially bigger than §20 established - well over 60 names across
+(at least) two categories, not 41 in one. The Sound-Bank-B hypothesis is
+neither strengthened nor weakened further by this specific result (same
+status as §20: plausible, not structurally confirmed). Concrete next
+steps if continued: produce a clean curated transcript of the full
+readable zone to get an accurate total count; investigate whether
+dropouts correlate with word-boundary characters specifically (would
+distinguish a deliberate per-character encoding convention from genuine
+corruption); treat the `0x6f800`+ periodic table as its own open
+question.
