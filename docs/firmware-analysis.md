@@ -5527,3 +5527,80 @@ discrepancy (which exact versions carry the full 35-scale list) worth
 a future pass reconciling against §57's own version-by-version
 evidence, plus completing the 1.3.0.6 search with better anchor
 coverage before calling it a true negative like 1.3.0.
+
+---
+
+## 61. Scale-name discrepancy fully resolved (35-name list is a 30+5 step function at OS 1.4); frozen footer diffed - one real checksum candidate, one real version-boundary correlation (2026-10-18)
+
+Direct follow-up closing out §60's two open threads.
+
+**Finding 1: the 35-scale-name list is not "present from some version
+onward" at all - it's a stable 30-name base list present unchanged in
+every version from the earliest available (1.1.3, 2011) through
+1.3.0.6, with the remaining 5 names (Dorian, Phrygian, Lydian,
+Mixolydian, Locrian - the Greek-mode set) added as a single step
+function starting exactly at OS 1.4, not gradually.** This fully
+resolves §60's open discrepancy and corrects its working assumption:
+1.3.0.6, previously called "inconclusive" in §60 (the search couldn't
+even locate the landmark words there), is now a confirmed genuine
+negative - the list had simply moved to a different absolute offset
+than where that search looked, and once found, unambiguously lacks all
+5 names ("Mongolian" runs directly into "Sequencer" with zero room,
+exactly as already seen in 1.3.0). Confirmed by direct hand-
+transcription of the high-bit-masked bytes at cited offsets in all 6
+versions, not just fuzzy-matcher scores - e.g. 1.3.0.6 at `0x69550`
+reads `...ongoli[a]n...Se[q]uencer...` with no trace of any Greek-mode
+name between them, while 1.4 at `0x6a3d0` reads the complete chain
+through `...Hawaiian.....Mongli.an..Do.rian.P.hrygan.....yd.ian.
+Mi.xolyia.n..Lcr.ian.eq.uencr...`.
+
+This also resolves a standing semantic puzzle: the OS 1.4 addendum's
+"New Modal Scales Added to 16 Tunings Mode... now a total of 35" refers
+precisely to adding these 5 names on top of a 30-name list that had
+already existed since at least 1.1.3 - not to the whole list being new
+at OS 1.3/1.4 as earlier framing (§57) implied. Full 30-name base list
+confirmed: Major, Melodic Minor, Harmonic Minor, Diminished,
+Chromatic, Pentatonic Major, Pentatonic Minor, Whole Tone, Blues,
+Bebop, Egyptian, Arabic, Byzantine, Gypsy, Spanish Gypsy, Hungarian,
+Romanian, Spanish, Persian, Hindu, Oriental, Chinese, Iwato,
+Hirajoshi, Prometheus, Pelog, Mohamedan, Javanese, Hawaiian, Mongolian.
+Only open gap: whether a version older than 1.1.3 (e.g. OS 1.0, not
+available) also has the 30-name list - not blocking, nice-to-have.
+
+**Finding 2: diffed the §59 frozen 3,067-byte footer (`0x7f546`-EOF)
+across all 6 versions - only 41 of 3,067 bytes (1.3%) actually differ,
+and they cluster meaningfully.** All 40 of the 41 (minus one isolated
+outlier, below) fall within footer-relative offset +192 to +1804, with
+the entire remaining ~2,300 bytes of the footer byte-for-byte identical
+across all 6 releases. **The single strongest checksum candidate**:
+the literal last byte of the entire 524,609-byte file (offset
+`0x80140`) is the only position where all 6 versions take mutually
+distinct values (1.1.3=`0x86`, 1.2.0.8=`0x79`, 1.3.0=`0xb0`,
+1.3.0.6=`0xaa`, 1.4=`0x98`, 1.5.0.2=`0x3a`) - the classic trailer-
+checksum position. Tested against several standard conventions (byte-
+sum mod 256 with/without itself, two's-complement, XOR, 16-bit-sum
+high/low byte) - none matched; a real CRC-8/16/32 sweep or finding the
+actual update-validation code would be needed to go further, not
+pursued here.
+
+**A second, unexpected real correlation**: 51% of all 41 differing
+positions (21 of 41) split the 6 versions along exactly the same
+boundary as Finding 1 - `{1.1.3, 1.2.0.8, 1.3.0, 1.3.0.6}` on one side,
+`{1.4, 1.5.0.2}` on the other - the same OS-1.3.0.6-to-1.4 release
+boundary where the 5 scale names were added. Most of these are small
+single-bit/nibble shifts (plausible for a small integer constant
+shifting on recompile), not a designed field. The causal link to
+Finding 1 is speculative (same boundary, unconfirmed shared cause),
+but the statistical fact itself (21/41, not a cherry-picked few) is
+directly confirmed. No contiguous byte run anywhere in the 41
+differences decodes as ASCII, a date, or BCD - checked explicitly,
+genuine negative.
+
+**Where this leaves things**: both §60 open items are now closed with
+solid, direct evidence rather than statistical inference alone - one
+of the cleaner resolutions in this document. The footer's EOF-1
+checksum candidate remains unverified and is a reasonable target for a
+dedicated CRC sweep if anyone wants to pursue it, but isn't blocking
+anything else. The firmware-content track has no other open threads
+left at this depth without either a new structural angle or the
+base-address/ICSP unblock.
