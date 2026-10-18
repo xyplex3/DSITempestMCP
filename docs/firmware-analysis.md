@@ -3334,3 +3334,70 @@ A reasonable next step if continued: re-run §33's matcher with a looser
 cost threshold specifically inside these 4 now-confirmed-real-text
 regions to recover more dictionary names and sharpen the overlap-window
 boundaries further - not attempted here.
+
+---
+
+## 35. Does the text-zone deletion mechanism extend into the structured zone? Tested directly at word-level and phase-level - a clean, well-controlled negative (2026-10-17)
+
+Direct follow-up closing out the question §33/§34 left open: does the
+confirmed period-7 deletion mechanism (§31/§33/§34) detectably continue
+into §27/§32's adjacent structured zone? Tested two ways, both
+independent of the broader zone-wide statistical comparison §32 already
+ran.
+
+**Word-level test: a deliberately permissive sequence-aligner, validated
+against §33's own confirmed real examples first.** Re-derived `Grain
+Granny`, `Back Scatter`, `Crunchy`, and the `VS 85`-`92` run correctly
+before trusting the matcher on new data - notably, independently
+re-confirming the exact period-7 claim on `Back Scatter` (2 destroy
+events separated by exactly 7 bytes), a word outside §33's original
+78-word curated sample. Run with no cost cap at all (not just cost≤1)
+across the full structured span `0x6f804`-`0x700e0` (2,268 bytes), every
+byte offset as a candidate word-start, against all 454 dictionary words:
+**exactly one candidate alignment in the entire span** - `Dry` at
+`0x6ffa9`, inside the `0x6ff80`-`0x6ffe0` gap §32 flagged. Directly
+inspected and explained away rather than silently dropped: only 1 of 3
+characters is a real literal byte (`0x44`='D'), sitting in a run of
+otherwise near-all-zero small-integer-table values (`0x02`/`0x03`/`0x01`/
+`0x40`) exactly matching §32's description of this sub-region, and its
+internal spacing fails the period-7 consistency check outright (spans 3
+bytes total, not the exact-7 gap every real multi-event match shows).
+This is a small-integer table value that happens to equal ASCII `D` by
+coincidence, not text. **Zero hits anywhere else** - the dense fingerprint
+run, the reduced-density resumption, and the small-integer table itself
+(`0x70190`-`0x70400`, checked separately) all produced zero candidate
+alignments at any cost.
+
+**Quantitative contrast, as a control**: running the identical permissive
+matcher over the confirmed real text zone (`0x6e50b`-`0x6f804`, comparable
+size) produces ~3,000 raw candidate hits, versus 1 weak, explained-away
+artifact in the structured zone - roughly three orders of magnitude
+difference using the exact same machinery on both. Strong corroborating
+evidence for "nothing text-like here," not just an absence of effort.
+
+**Phase-level test: does the text zone's own period-7 signature, naively
+extrapolated forward unchanged, predict anything inside the structured
+zone?** Continued the confirmed residue-6 phase (from `0x6f52e`-`0x6f7af`)
+forward at exactly `+7` through 324 predicted positions spanning the
+whole structured zone. **Test A** (literal `0x00`/`0x80` rate at those
+predicted positions): 4.63% (15/324) - statistically indistinguishable
+from the structured zone's own overall baseline rate of such bytes
+(4.76%, 108/2268). **Test B** (concentration of the structured zone's own
+fingerprint-byte family at that same predicted residue): 38.9% - actually
+*below* most other residues mod 7 in the same span (44.8%-45.7% for four
+other residues), not elevated at the one residue the text-zone mechanism
+would predict if it continued running. Both tests cleanly reject "the
+same mechanism just keeps running, unchanged, into the structured zone."
+
+**Where this leaves things**: a genuine, well-tested negative, now
+confirmed at word-level and exact-phase-level rather than only the
+broader zone-wide statistical comparison §32 already made. The text
+zone's deletion mechanism and the structured zone's internal structure
+are confirmed independent - adjacent, but not the same process extending
+across the boundary. What remains genuinely open, unchanged by this
+result: what the 28-byte structured records actually encode, what causes
+the phase jumps at §33's block boundaries (§34 narrowed but didn't
+resolve this), and what the `0x1D`/`0x9D`/`0x06`/`0x86` fingerprint-byte
+dominance in the raw wire stream (§27) represents semantically. No
+further concrete next step identified for the zone-interaction question
+specifically - it now looks closed.
