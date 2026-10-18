@@ -2016,3 +2016,62 @@ layout, ideally cross-referenced against the confirmed 121-entry
 `SoundParams` table (`internal/sysex/soundparams.go`) already used for
 the wire-protocol Sound (0x60) format, to see if the same parameter
 encoding appears here too.
+
+---
+
+## 21. The most exhaustive brute-force attempt yet - the entire Program Flash range swept, still a clean negative, but one specific untested alternative identified (2026-10-17)
+
+Extends §18's small-shift search to its logical conclusion: instead of
+testing a narrow ±8KB window around a single guess, sweep the **entire
+confirmed Program Flash range** (`0x9D000000`-`0x9D080000`, 512KB) at
+4-byte granularity - 131,072 candidate bases - anchored at the invariant
+`0x20000` boundary (§15/§18) rather than file offset 0, tested jointly
+against all 6 independently-built firmware versions' own jump tables.
+
+**Pipeline verified correct before trusting the result**: at
+`candidate_base = 0x9D020000`, this new formula degenerates exactly to
+the already-tested `base=0x9D000000`-at-file-offset-0 model and
+reproduces §14's exact published negative (`0/45, 0/45, 0/45, 0/40,
+0/40, 0/40`) - confirms this is a genuine, correctly-implemented
+extension of existing work, not a different methodology producing an
+unrelated result.
+
+**Result: zero candidates, out of all 131,072, make all 6 versions
+simultaneously valid.** This is as exhaustive as this particular
+hypothesis (flat absolute-pointer jump table, offset-relative base) can
+be tested - the entire chip-confirmed valid address range, not a
+narrow guess. The best partial result anywhere in the sweep was still
+only 3 of 6 versions nonzero, at weak fractions - the same ceiling §18's
+narrower search already hit. **Directly inspected the strongest
+individual hits** (this project's standing rule: check resolved values,
+not just counts) - all are the same already-catalogued false-positive
+shapes: a smoothly-incrementing sequence (sliding window over structured
+data), a single value repeated a dozen-plus times (never seen in a real
+dispatch table), and a clean repeating 5-word record stride (a real but
+unrelated struct array being sampled, not a 40-case table).
+
+**A noise-baseline nuance worth recording**: the obvious "random base
+across the full 32-bit space" control turned out structurally
+uninformative here - because the file is only 512KB, a random base drawn
+from nearly 4GB of address space almost never maps a valid table position
+into the file at all, so that baseline is trivially zero for a different,
+less interesting reason (can't even produce a testable candidate) rather
+than genuinely competing with the real window on equal footing. The real
+finding is that **the confirmed Program Flash window is the only region
+where this linear model can produce a candidate at all** - exhaustively
+tested within that window, still negative.
+
+**Where this leaves things, and the one concrete alternative not yet
+tried**: this closes out the "flat absolute-pointer jump table" model as
+thoroughly as computationally possible - not just a narrow guess failing,
+but the entire valid address space failing. The standing recommendation
+(ICSP, §7 item 5) is reinforced, not weakened. One specific, genuinely
+untested hypothesis remains on record (already noted in §5 item 7 but
+never actually tested): **the jump table's entries might not be flat
+absolute pointers at all** - GCC can compile position-independent jump
+tables with PC-relative deltas (each entry = offset from the table's own
+address, not an absolute address) under certain configurations. This is a
+real, documented alternative encoding, not a new guess, and would need an
+entirely different validity test (added to the table's own address rather
+than compared against the Program Flash range directly) than anything
+tried in §5, §14, §18, or here.
