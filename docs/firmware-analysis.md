@@ -5330,3 +5330,106 @@ guessing an addressing model, and no further brute-force encoding
 variant is obviously worth trying without a genuinely new angle - the
 base-address problem is now about as thoroughly exhausted
 computationally as this project's own standards can establish.
+
+---
+
+## 59. Main's used-flash edge characterized across all 6 versions - not a clean edge like Voice's, but three tiers, a frozen footer, a real periodic marker, and a new unidentified fragment (2026-10-18)
+
+Direct follow-up to §56's incidental lead, characterizing Main's own
+used-flash boundary across all 6 known releases, mirroring §28's
+successful Voice methodology.
+
+**Headline finding: Main's flash tail is not a single clean edge like
+Voice's - it's three distinct tiers.** Tier 1 is ordinary dense content
+up to the boundary; Tier 2 (boundary to `0x7f546`) is >99% literal
+`0xFF` with a confirmed real periodic marker (below) plus occasional
+content islands; Tier 3 (`0x7f546` to EOF `0x80141`, 3,067 bytes) is a
+genuinely new finding - **the exact positions and lengths of every
+`0xFF`-run and content-run in this final 3,067 bytes are byte-for-byte
+identical in shape across all 6 releases** (30/30 runs match exactly
+when compared backward from EOF, first mismatch always at `0x7f546`),
+even though the actual byte *values* differ release to release (SHA-256
+of the tail differs for all 6) - frozen shape, not frozen content.
+This footer straddles the file's already-documented 512KB (`0x80000`)
+physical-flash-top landmark (2,746 bytes before it, 321 after - the 321
+matches the already-noted "524,609 is 321 over 512KB" fact exactly),
+consistent with being a fixed structure anchored to the physical top of
+Program Flash rather than part of the relinked/relocatable image.
+Binary/tabular content, not text.
+
+**Per-version boundary offsets, confirmed by two independent methods
+(run-decomposition and a completely separate total-non-`0xFF`-byte-
+count metric, which agree exactly on ordering)**: 1.1.3 `0x6ace7`,
+1.2.0.8 `0x72774` (+31,373), 1.3.0 `0x7807f` (+22,795), 1.3.0.6
+`0x76523` (**-7,004, a shrink**), 1.4 `0x77483` (+3,936), 1.5.0.2
+`0x7977c` (+8,953) - this last value refines §56's rough `~0x797a0`
+estimate to its exact run boundary.
+
+**Answering §28's exact question for Main: not monotonic, and not
+contiguous/append-style like Voice.** The one shrink (1.3.0→1.3.0.6) is
+not a new anomaly - it's a second, independent reproduction (via the
+used-flash edge itself, not content-diffing) of the already-documented
+§19 finding that this specific pair shows real content disappearing.
+More significantly, Main's boundary jumps by tens of thousands of bytes
+in both directions release to release, unlike Voice's small, strictly
+additive ~300-500-byte increments - fully consistent with Main's
+"fully relinked on every build" character (§19) and its 84-87% raw
+cross-version diff rate (§24), versus Voice's localized 49.9% churn.
+Main's edge is not a stable append-point the way Voice's is.
+
+**Why: the "growth" between versions is mostly repositioned existing
+content, not new material.** Checked each growth window with the
+established battery: 1.1.3→1.2.0.8's growth is, almost exactly, the
+already fully-documented §19/§20/§23/§25/§29 Sound-Bank-B preset block.
+The portions of the other growth windows beyond the already-documented
+OS-1.3 text pool (§53/§57) all show a decisive 28-byte lag-
+autocorrelation signature (2.86x-3.47x over 200-trial shuffled
+controls, 0/200 trials matching) - **more sightings of the already-
+catalogued, still-unidentified 28-byte periodic structure** (§27/§38/
+§39/§56), not a new structure. Scattered within that same content:
+drum/sample-category and default-folder/filesystem-path strings
+(`Cymbals`, `User 1`-`4`, `Kicks`, `Snare`, `HiHats`, `Beats 1`-`9`,
+`Projects 1`-`9`, `/B/Init Beat`, `/S/Factory/Initialize`) with the
+established lossy-decay corruption pattern - the same stable, recurring
+content category repositioned by each relink, not freshly-added
+material.
+
+**A real, previously-undocumented periodic marker, confirmed across
+all 6 versions and cross-checked against real chip documentation.**
+Every length-1 non-`0xFF` run inside each version's Tier-2 sparse zone
+has the exact same value - **`0x83`** - dominant in every version
+(e.g. 75/75 singleton runs in 1.1.3, 23/23 in 1.5.0.2), spaced
+overwhelmingly at **1024 or 1025 bytes**, with a clean 2049/2050
+"double-step" exactly where a larger content island occupies that
+row's marker position instead (confirmed via delta histograms in every
+version). This precisely quantifies and confirms §56's passing
+observation. Cross-checked against Microchip's PIC32MX5XX/6XX/7XX
+documentation: program-flash row size is confirmed 512 bytes (128
+32-bit words) - the observed ~1024-byte period is exactly **2 flash
+rows**, not 1. The specific value `0x83`'s meaning is not identified.
+
+**A new, previously-undocumented recurring fragment, found verbatim in
+all 6 releases.** Searching for a distinctive garbled substring near
+every boundary turned up the same fragment - a run including `(null)`
+and what read as two-case hex-digit tables (`0123456789abcdef`/
+`0123456789ABCDEF`) - present in all 6 Main releases spanning 2011-2017,
+each time positioned a few hundred to a few thousand bytes before that
+version's own boundary (anchor offsets: 1.1.3 `0x6a463`, 1.2.0.8
+`0x72267`, 1.3.0 `0x776c4`, 1.3.0.6 `0x757ff`, 1.4 `0x76752`, 1.5.0.2
+`0x78a47`). Not identified, but `(null)` is a classic C-library
+`printf("%s", NULL)` fallback string, and the adjacent two-case hex
+tables are consistent with sprintf/hex-dump support data - a specific,
+testable hypothesis for a future session, not yet confirmed.
+
+**Where this leaves things**: Main's used-flash edge behaves
+meaningfully differently from Voice's (3 tiers, non-monotonic, a frozen
+physical-boundary-anchored footer) rather than the same simple pattern -
+a real, informative contrast, not a failed replication. Two genuinely
+new structural facts (the `0x83` flash-row marker, the `(null)`/hex-
+table fragment) were found and confirmed across all 6 versions.
+Concrete next steps if continued: test the printf/hex-dump-table
+hypothesis for the new fragment directly; diff the frozen footer's few
+per-build byte differences position-by-position to check for
+correlation with build date/version/checksum; a full sweep of all
+Tier-2 content islands beyond the ones spot-checked here, lower
+priority given how consistent the spot-checks already were.
