@@ -2219,3 +2219,65 @@ dropouts correlate with word-boundary characters specifically (would
 distinguish a deliberate per-character encoding convention from genuine
 corruption); treat the `0x6f800`+ periodic table as its own open
 question.
+
+---
+
+## 24. Voice's firmware shows the same growth pattern as Main, but the new content isn't readable text - a clean, calibrated negative (2026-10-17)
+
+Applied §19's feature-anchored version-diffing technique to Voice instead
+of Main, for the same 1.1.3→1.2.0.8 pair that found Main's 29,713-byte
+preset-name block, to check whether Sound Bank B content also landed in
+Voice's image.
+
+**Pipeline verified correct before trusting the result**: Sam's firmware
+hashes identical across both releases (matches §14's "never updated"
+invariant); Panel differs between 1.1.3 and 1.2.0.8, but this is expected,
+not a bug - §14's Panel-frozen claim only starts at the 1.3 release
+(May 2013), and these source zips genuinely contain different Panel
+versions (`1.1.syx` vs `1.2.syx`) for this earlier pair.
+
+**Voice's relink-churn pattern is structurally different from Main's, not
+just smaller.** Raw diff is 49.92% (vs. Main's 84-87%), and - unlike
+Main's smeared-everywhere churn - it's concentrated in one dense ~33KB
+band (`0x2000`-`0xa400`, 92-98% diff per 1KB bucket), flanked by two large
+identical regions (`0x0`-`0x2000` and `0xa400`-`0xf400`) that don't churn
+at all between these builds.
+
+**A real, confirmed erased-flash-to-content transition exists, scaled way
+down from Main's.** After filtering out 657 isolated single/double/triple-
+byte `0xFF`-coincidence false positives inside the churn band (the same
+noise class this technique is designed to filter), one real contiguous
+run stands out: **475 bytes at file offset `0xa282`-`0xa45c`**, pure
+`0xFF` in 1.1.3, 97.05% real content in 1.2.0.8, confirmed as the growing
+edge of Voice's used-flash boundary (41,602 → 42,077 bytes used) rather
+than a relocated mid-file block - both versions return to pure `0xFF`
+immediately after it and sit in ordinary churn immediately before it. The
+reverse direction (content disappearing, mirroring §19's 1.3.0→1.3.0.6
+side-finding) was also checked: no comparable block, only isolated
+1-2-byte noise.
+
+**The new content is confirmed NOT readable text, by every method that
+worked on Main's block** - a clean, calibrated negative, not an
+under-tested gap: `strings` finds nothing real; §23's high-bit-masking
+technique (`byte & 0x7F`) gives 36.2% printable density, which is *below*
+this block's own surrounding churn-region baseline (50.6%), not elevated
+above it the way Main's genuine text zones were; §20's confirmed
+4-byte-aligned null-terminated name-table convention shows no `≡3 mod 4`
+clustering at all (uniform across all four residues). Entropy is 5.44
+bits/byte, dominated by `0x00` (20%) - reads as generic structured binary
+data (code or a parameter/record table) on Voice's own undocumented custom
+ISA, not any kind of string content. A MIPS decode-density check was
+deliberately not attempted, since Voice is confirmed non-MIPS custom
+silicon (§2) and such a number wouldn't be a validated signal the way it
+is for Main/Panel.
+
+**Where this leaves things**: the abstract "image grows at the erased-flash
+edge between these two releases" pattern is now confirmed on a second,
+architecturally-unrelated processor, not just Main - real corroboration
+that this diffing technique generalizes. But the ~63x scale difference
+(475 bytes vs. 29,713) combined with the confirmed non-text content makes
+it look unlikely that Sound Bank B's new preset *names* live in Voice's
+image for this release pair - that content is still only characterized in
+Main (§19/§20/§23). Not pursued further this session: whether Voice shows
+its own recurring boundary offset across other version pairs (mirroring
+§19's `0x76800` Main side-finding) remains untested.
