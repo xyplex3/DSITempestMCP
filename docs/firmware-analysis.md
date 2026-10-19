@@ -5969,3 +5969,83 @@ frame/re-edit of the same video to read the physical marking directly)
 before fully trusting it, and even once/if confirmed for Prophet 12,
 treating it as the Tempest's own chip still rests on the inherited
 platform-sharing argument from §63, not a direct observation.
+
+---
+
+## 67. PIC32MX695F's real memory map obtained and checked - identical to the generic map already used; chip-identity search otherwise still single-source (2026-10-18)
+
+Direct follow-up to §66 - the single highest-value open item, since
+every prior base-address brute-force attempt had used a *generic
+example* PIC32 part's memory map (never confirmed to actually be the
+Tempest's own part) rather than real, part-specific data.
+
+**Corroboration for PIC32MX695F (Task A): still not found, remains
+single-source.** A real search effort (`"PIC32MX695F" "Prophet 12"`,
+`"PIC32MX695F" Sequential "Dave Smith"`, `"PIC32MX695F" synthesizer`,
+plus production-timing checks via datasheet copyright span and
+distributor listings) found zero independent source naming this part
+for any Sequential/DSI product. The datasheet's 2009-2016 copyright
+span is at least *consistent* with availability for a 2012-2013-era
+DSI product, but that's timing plausibility, not part-specific
+confirmation. **The identification remains exactly what §66 reported
+it as: one hobbyist video's on-screen caption, not independently
+corroborated.**
+
+**The real, part-specific memory map (Task B): obtained with high
+confidence, and it changes nothing about the known failures.**
+Sourced directly from Microchip's own "PIC32MX5XX/6XX/7XX Family"
+datasheet (DS60001156J), **Figure 4-6** specifically (page 52,
+explicitly titled for PIC32MX695F512H/L and PIC32MX795F512H/L -
+distinct from the visually similar Figure 4-5 one page earlier, which
+covers the unrelated 575/675/775**F256** 256KB-flash variants; a
+genuine mislabeling trap this session caught and corrected rather than
+propagating). Confirmed addresses:
+
+- Program Flash: virtual KSEG0 `0x9D000000`-`0x9D07FFFF` (exactly
+  512KB), physical `0x1D000000`-`0x1D07FFFF`.
+- Boot Flash: virtual KSEG1 `0xBFC00000`-`0xBFC02FEF` (12KB, a
+  genuinely SEPARATE physical flash region, not contiguous with
+  Program Flash - physical gap between `0x1D07FFFF` and `0x1FC00000`).
+- Device config registers (DEVCFG0-3): physical
+  `0x1FC02FFC`/`FF8`/`FF4`/`FF0`.
+- RAM: 128KB at physical `0x00000000`-`0x0001FFFF` (this is the one
+  value that actually differs from smaller-RAM family siblings like
+  575/675/775F512, which have only 64KB - consistent with 695/795
+  being the higher-RAM variants, though irrelevant to flash-side
+  base-address work).
+
+**These addresses are byte-for-byte identical to the generic 512KB
+example map already used in every prior base-address attempt.** This
+is a genuinely important negative result, not a null finding: it
+closes off the specific possibility (raised when launching this task)
+that "the generic example part's map was subtly wrong for this exact
+chip" might explain why §58 and earlier brute-force/jump-table
+attempts all failed. It wasn't wrong, at least on these numbers -
+meaning the base-address problem's resistance to computation isn't a
+wrong-map artifact, strengthening (not weakening) confidence that ICSP
+hardware access is genuinely necessary, not just one guess away.
+
+**Sanity check against the real Tempest firmware (Task C): clean,
+expected negative.** Freshly re-decoded the Tempest's Main firmware
+(524,609 bytes, matching the standing figure) and checked it against
+the now-confirmed real boundaries: dense content runs to file offset
+`0x7FE13`, then `0xFF` padding to the 512KB boundary, then the already
+-documented 321-byte trailer (itself almost entirely `0xFF`, with only
+the two already-known non-FF bytes - the `0x83` marker from §59 and
+the EOF checksum-candidate byte from §61/§62). **No second dense
+region exists anywhere that could plausibly be a 12KB Boot Flash
+dump** - confirms (now against the specific confirmed part's real
+boundaries, not a generic guess) that the `.syx` image is Program-
+Flash-only and never included Boot Flash content.
+
+**Where this leaves things**: the real per-part memory map has now
+been obtained and checked, and it changes nothing computationally -
+the base-address problem's failures were never a map-correctness
+issue. Chip-identity corroboration is still open (one source only).
+One avenue flagged as not yet tried: applying this session's
+breakthrough technique (actually watching teardown/repair video,
+frame by frame, rather than trusting text search) specifically to any
+Tempest-branded videos, not just Prophet 12's - the original Tempest
+photo searches (earlier sessions) were photo/image-search based and
+never did this kind of video-frame inspection. ICSP hardware access
+remains the standing, strengthened recommendation.
