@@ -6915,3 +6915,52 @@ of this UI widget/display logic architecturally, and was never
 checked for this record type - a concrete, specific, not-yet-tried
 angle if anyone wants one more static-analysis attempt before
 concluding this needs hardware access.
+
+---
+
+## 80. Panel firmware checked for the widget-descriptor record format too - clean negative, properly validated (2026-10-19)
+
+Direct follow-up to §79's one remaining untested lead: whether the UI
+widget-descriptor record format might architecturally belong to
+Panel's firmware (the Tempest's display/button/encoder controller)
+rather than Main's.
+
+**Properly validated before trusting a negative on new data - the
+right methodological order.** Decoded Panel 1.3 firmware fresh (65,577
+bytes, confirmed byte-identical via SHA-256 to a pre-existing cached
+copy) and ran the exact same scan script, UNMODIFIED, against Main's
+firmware first as a sanity check: it correctly and uniquely re-derives
+the already-known 42-record table at file offset `0x7412a`, including
+decoding the `type=7/max=127` character-entry records back to literal
+`val=66,97,115,105,99` = ASCII "Basic" - confirming the method has a
+genuinely low false-positive rate before relying on it for a new
+negative result elsewhere.
+
+**Clean negative in Panel, properly stress-tested.** Zero runs of ≥3
+consecutive matching records anywhere in Panel's 65,577-byte firmware,
+under little-endian AND big-endian interpretation, and under
+substantially loosened thresholds. The few coincidental matches found
+under loosened thresholds were directly inspected and explained away:
+one sits inside an obvious power-of-two bitmask/lookup table (`4, 8,
+16, 32, 64, 128, 256...`), the other inside a degenerate run of
+repeating `0x01` bytes - neither remotely resembles real pointer-
+shaped data, confirming these are coincidental, not a missed real
+table.
+
+**Where this leaves things**: both concrete leads §79 flagged are now
+closed. The widget-descriptor record format does not exist anywhere
+in Panel's firmware, under the same rigor that found and confirmed it
+uniquely in Main. This is the second clean, well-controlled negative
+on the "where do the 80 missing parameters live" question in as many
+sessions, following the equally clean Main-firmware negative and the
+real-hardware-SysEx-data negative (§78) before it. Combined, these
+three independent, differently-angled searches (real device captures,
+Main's own widget tables, Panel's own widget tables) have now been
+tried and all failed - the remaining untested possibilities are
+either a completely different, unguessed record shape, or (the
+project's own standing assessment, now reinforced a third time) that
+these values are genuinely RAM-only live state, never baked into
+either firmware image as readable defaults - which only ICSP/live-
+memory hardware access could resolve. Voice and Sam firmware were not
+checked for this record shape (lower priority - architecturally less
+plausible owners of UI widget/display logic than Panel).
