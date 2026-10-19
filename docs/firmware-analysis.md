@@ -5841,3 +5841,57 @@ priority, since it's a confirmed different platform). ICSP hardware
 access remains the standing, unchanged recommendation - nothing found
 across §63-§64 supersedes it, only broadens which product's chip photo
 would help if one ever surfaces.
+
+---
+
+## 65. Patent search for the Tempest's MCU identity - clean negative; the Gearspace PIC32 rumor remains unverifiable with available tools (2026-10-18)
+
+Two bounded, honest negatives, worth recording so neither is
+re-attempted without a genuinely different method.
+
+**Patent search (closed, not worth revisiting)**: searched Google
+Patents' internal query API (confirmed more reliable than the
+JS-rendered search UI, which WebFetch can't read) for any DSI/
+Sequential-lineage patent that might describe the Tempest's control
+electronics in enough technical detail to name a microcontroller part
+number. Checked assignee searches ("Dave Smith Instruments",
+"Sequential LLC", "Sequential Synths") and inventor searches ("Dave
+Smith" - too common a name to be useful alone, 26 unrelated results;
+"Roger Linn" - 2 real hits, both for the LinnStrument/later touch
+controllers, both years after the Tempest and assigned to Roger Linn
+personally, not DSI). **Confirmed result: no indexed patent exists
+from the DSI/Sequential lineage dated anywhere near the Tempest's
+2008-2012 development window.** The only patents tied to this
+company lineage at all are two 2022-2025 *design* patents (ornamental
+appearance only, by definition cannot contain circuit/part-number
+detail), assigned to the post-acquisition "Sequential Synths Limited"
+entity. This avenue is fully exhausted, not just under-searched.
+
+**Gearspace rumor (still unverified, not improved, bounded effort
+correctly stopped)**: the specific thread
+(`gearspace.com/threads/dsp-board-vs-cpu-question.867145/`, a 2010
+thread) was located precisely, but direct fetch is blocked (HTTP 403)
+and the Wayback Machine has **no snapshot of this URL at all**
+(confirmed via both the `available` API and a direct CDX query, each
+checked twice to rule out a transient Archive.org outage). A refined,
+quote-based search surfaced only generic PIC32MX datasheet/distributor
+pages (correctly confirming the chip family's 80MHz spec exists
+generically, but adding nothing product-specific). **The claim remains
+exactly where it was**: a plausible, architecture-consistent rumor,
+sourced only to an earlier session's search-engine snippet, never a
+primary source. Not worth more search-query iteration on this specific
+thread without different tooling (e.g. an authenticated fetch path
+that isn't blocked by Gearspace's 403).
+
+**Where this leaves things**: between this section and §64, the
+chip-identity search has now tried photo evidence (Tempest, Prophet
+12, Pro 2 - all negative), patent filings (negative), and forum rumor
+verification (inconclusive, tooling-blocked) - a genuinely broad
+search, not a narrow one. Nothing found in §63-§65 changes the
+standing recommendation that ICSP hardware access is the most direct
+path to resolving the base-address problem. If a future session wants
+to keep pursuing external chip-identity evidence rather than switching
+to a different kind of lead entirely, the one method not yet
+systematically tried is downloading and visually inspecting candidate
+teardown/listing photos directly (rather than relying on text-search
+summaries of what a photo might show) - untested, not yet ruled out.
