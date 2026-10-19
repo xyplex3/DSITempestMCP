@@ -164,6 +164,25 @@ func KitBlockLen(noteCount int) int {
 	return contentLen + kitTailLen(contentLen)
 }
 
+// kitBlockLenInProject returns a kit block's length, in bytes, when it is
+// one of a Project (0x61) dump's own back-to-back embedded blocks, for the
+// given active note count — unlike KitBlockLen, with NO trailing tail.
+// kitTailLen/kitTailPattern exist to keep a STANDALONE Beat (0x5F)
+// message's own 7+1 wire packing aligned (see kitTailPattern's doc
+// comment); a Project dump instead escapes its entire payload as one unit
+// (escapeProjectPayload), so no individual embedded block needs or
+// carries that padding. Confirmed via two real Project captures with
+// different project-path lengths (so different computed header
+// offsets, §9.10): using KitBlockLen's larger, tail-included figure here
+// decodes beat 0 correctly (its block happens to follow the header
+// directly) but misaligns every beat after it by kitTailLen's few bytes,
+// compounding across all 16 blocks — this is what callers that walk a
+// Project's blocks (ProjectBeats/EncodeProject, via projectBlockBounds)
+// must use instead of KitBlockLen.
+func kitBlockLenInProject(noteCount int) int {
+	return KitBlockBaseSize + KitBlockBytesPerNote*noteCount
+}
+
 // swingToRaw inverts KitSwing's raw-to-percent formula (50 +
 // raw*(75-50)/12), rounding to the nearest representable raw value and
 // clamping to the confirmed 0-12 range.

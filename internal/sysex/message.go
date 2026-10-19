@@ -1,6 +1,7 @@
 package sysex
 
 import (
+	"bytes"
 	"crypto/md5"
 	"fmt"
 	"sort"
@@ -74,18 +75,47 @@ const (
 	KitNoteRecordLen    = 10
 
 	// Project (0x61) layout — see docs/sysex-tempest-format.md §9.10.
-	// ProjectHeaderLen is the size of the project-level header preceding
-	// the first kit block. KitBlockBaseSize is a kit block's unescaped size
-	// with zero active notes; each active note adds KitBlockBytesPerNote
-	// bytes. Confirmed against one real Project sample where every block
-	// had 0 or 1 notes — the multi-note case is unverified (§9.4/§9.7), so
-	// a block decoded with more than one note should be treated with the
-	// same caution as any other unconfirmed multi-note result.
+	// The project-level header preceding the first kit block begins with a
+	// null-terminated ASCII path whose length varies with the project's
+	// own name, so — unlike KitBlockBaseSize — the header is NOT a fixed
+	// total size across all Project captures; see projectHeaderLen, which
+	// computes the real per-payload value from that path. ProjectHeaderLen
+	// (349) is the value for the original confirming sample specifically
+	// (a 27-char path, 28 bytes incl. the null terminator); it's kept as a
+	// named constant only because tests that don't care about a real path
+	// need some fixed total to build a synthetic header of. Confirmed
+	// wrong as a universal constant by a second real capture
+	// (testdata/project-research/newbeat2_allempty.syx, a 24-char path,
+	// needing a 346-byte header) whose beat-0 name/short-name/BPM decoded
+	// as garbage under the fixed-349 assumption — the header's post-path
+	// tail is a fixed projectHeaderTailLen (349-28=321) bytes in both
+	// samples, confirming the header truly scales with path length rather
+	// than the first sample being some other kind of exception.
+	// KitBlockBaseSize is a kit block's unescaped size with zero active
+	// notes; each active note adds KitBlockBytesPerNote bytes. Confirmed
+	// against one real Project sample where every block had 0 or 1 notes —
+	// the multi-note case is unverified (§9.4/§9.7), so a block decoded
+	// with more than one note should be treated with the same caution as
+	// any other unconfirmed multi-note result.
 	ProjectHeaderLen     = 349
+	projectHeaderTailLen = ProjectHeaderLen - 28
 	BeatsPerProject      = 16
 	KitBlockBaseSize     = 5174
 	KitBlockBytesPerNote = 10
 )
+
+// projectHeaderLen returns the actual byte length of the project-level
+// header preceding the first kit block in an unescaped Project (0x61)
+// payload, computed from that payload's own null-terminated path rather
+// than assumed fixed — see ProjectHeaderLen's doc comment for why a
+// constant can't be used here.
+func projectHeaderLen(unescaped []byte) (int, error) {
+	nullIdx := bytes.IndexByte(unescaped, 0)
+	if nullIdx < 0 {
+		return 0, fmt.Errorf("project payload has no null-terminated path in its header")
+	}
+	return nullIdx + 1 + projectHeaderTailLen, nil
+}
 
 // MessageType classifies a raw SysEx byte slice by its Tempest message type.
 // The zero value is [TypeUnknown].
@@ -318,7 +348,7 @@ type ProjectBeat struct {
 
 // ProjectBeats decodes every kit block from an unescaped Project (0x61)
 // payload. See docs/sysex-tempest-format.md §9.10 for the confirmed
-// layout: ProjectHeaderLen bytes of project header, then BeatsPerProject
+// layout: a project header (see projectHeaderLen), then BeatsPerProject
 // kit blocks packed back-to-back with no gaps, each block's own length
 // depending on its decoded note count (KitBlockBaseSize +
 // KitBlockBytesPerNote per note). Because each block's length depends on
@@ -346,22 +376,28 @@ func ProjectBeats(unescaped []byte) ([]ProjectBeat, error) {
 
 // projectBlockBounds walks an unescaped Project (0x61) payload and returns
 // the [start,end) byte bounds, within unescaped, of each of the
-// BeatsPerProject kit blocks packed back-to-back after ProjectHeaderLen
-// (§9.10). Each block's length depends on its own decoded note count, so a
-// wrong count for one block misaligns every later block; on such
-// misalignment this returns the bounds found so far alongside a non-nil
-// error, matching ProjectBeats' own documented behavior (this is the shared
-// walk both ProjectBeats' decode and EncodeProject's write build on).
+// BeatsPerProject kit blocks packed back-to-back after the project's own
+// header (see projectHeaderLen — the header's total length depends on the
+// project's path, so it's computed per-payload, not a fixed constant).
+// Each block's length depends on its own decoded note count, so a wrong
+// count for one block misaligns every later block; on such misalignment
+// this returns the bounds found so far alongside a non-nil error, matching
+// ProjectBeats' own documented behavior (this is the shared walk both
+// ProjectBeats' decode and EncodeProject's write build on).
 func projectBlockBounds(unescaped []byte) ([][2]int, error) {
-	if len(unescaped) < ProjectHeaderLen {
+	headerLen, err := projectHeaderLen(unescaped)
+	if err != nil {
+		return nil, err
+	}
+	if len(unescaped) < headerLen {
 		return nil, fmt.Errorf("payload is %d bytes, shorter than the %d-byte project header",
-			len(unescaped), ProjectHeaderLen)
+			len(unescaped), headerLen)
 	}
 	// Bounds the note scan below so a run of stray marker-shaped bytes
 	// can't be misread as extending into later blocks' own data.
 	const maxNotesPerKitBlock = 256
 
-	offset := ProjectHeaderLen
+	offset := headerLen
 	bounds := make([][2]int, 0, BeatsPerProject)
 	for i := range BeatsPerProject {
 		if offset+KitBlockBaseSize > len(unescaped) {
@@ -370,7 +406,7 @@ func projectBlockBounds(unescaped []byte) ([][2]int, error) {
 		}
 		scanEnd := min(offset+KitBlockBaseSize+maxNotesPerKitBlock*KitBlockBytesPerNote, len(unescaped))
 		notes := KitNoteRecords(unescaped[offset:scanEnd])
-		blockLen := KitBlockLen(len(notes))
+		blockLen := kitBlockLenInProject(len(notes))
 		if offset+blockLen > len(unescaped) {
 			return bounds, fmt.Errorf("beat %d: decoded %d note(s) implies a %d-byte block past the payload end — likely misaligned",
 				i, len(notes), blockLen)

@@ -12,9 +12,15 @@ import (
 // testing KitNoteRecords/ProjectBeats: sysex.KitBlockBaseSize bytes plus
 // sysex.KitBlockBytesPerNote per entry in notes, with name, short name,
 // BPM, swing, and note records placed at their confirmed offsets (see
-// docs/sysex-tempest-format.md §5/§9.1-9.3/§9.10).
+// docs/sysex-tempest-format.md §5/§9.1-9.3/§9.10). Deliberately does NOT
+// use sysex.KitBlockLen's tail-included size: that tail exists only to
+// keep a standalone Beat (0x5F) message's own wire packing aligned, and
+// a Project's own embedded blocks carry no such tail (confirmed against
+// two real Project captures) — this matches the real no-tail layout, so
+// a block built here concatenates correctly into a synthetic Project
+// payload via buildProjectPayload without an EncodeProject-style trim.
 func buildKitBlock(name, shortName string, bpmRaw uint16, swingRaw byte, notes []sysex.NoteRecord) []byte {
-	size := sysex.KitBlockLen(len(notes))
+	size := sysex.KitBlockBaseSize + sysex.KitBlockBytesPerNote*len(notes)
 	kit := make([]byte, size)
 	kit[sysex.KitBPMOffset] = byte(bpmRaw >> 8)
 	kit[sysex.KitBPMOffset+1] = byte(bpmRaw)
@@ -161,11 +167,18 @@ func TestKitNoteRecords(t *testing.T) {
 	})
 }
 
-// buildProjectPayload concatenates ProjectHeaderLen zero bytes (a stand-in
-// project header; ProjectBeats only reads past it) with the given kit
-// blocks, matching the confirmed back-to-back layout (§9.10).
+// buildProjectPayload concatenates a stand-in project header (ProjectBeats
+// only reads past it) with the given kit blocks, matching the confirmed
+// back-to-back layout (§9.10). The real header length depends on the
+// project's own null-terminated path (see projectHeaderLen — ProjectBeats
+// reads it from the payload, not a fixed constant), so this builds a
+// 27-char placeholder path to land on exactly ProjectHeaderLen (349)
+// total, matching every byte offset this test file's assertions assume.
 func buildProjectPayload(blocks ...[]byte) []byte {
 	payload := make([]byte, sysex.ProjectHeaderLen)
+	for i := range 27 {
+		payload[i] = 'x' // placeholder path; byte 27 stays 0 as the null terminator
+	}
 	for _, b := range blocks {
 		payload = append(payload, b...)
 	}
@@ -227,9 +240,16 @@ func assertEmptyBeats(t *testing.T, beats []sysex.ProjectBeat) {
 }
 
 // TestProjectBeats_TooShortHeader verifies that a payload shorter than the
-// project header is rejected with an error.
+// project header is rejected with an error. Uses the same 27-char
+// placeholder path as buildProjectPayload so the computed header length
+// is still exactly ProjectHeaderLen (349), one byte more than this
+// payload provides.
 func TestProjectBeats_TooShortHeader(t *testing.T) {
-	_, err := sysex.ProjectBeats(make([]byte, sysex.ProjectHeaderLen-1))
+	payload := make([]byte, sysex.ProjectHeaderLen-1)
+	for i := range 27 {
+		payload[i] = 'x'
+	}
+	_, err := sysex.ProjectBeats(payload)
 	if err == nil {
 		t.Fatal("ProjectBeats() expected error for too-short payload, got nil")
 	}
@@ -254,5 +274,60 @@ func TestProjectBeats_TruncatedMidBlock(t *testing.T) {
 	}
 	if !strings.Contains(err.Error(), "truncated") {
 		t.Errorf("error = %q, want it to mention truncation", err.Error())
+	}
+}
+
+// TestProjectBeats_HardwareCapture decodes a real hardware-captured Project
+// (0x61) dump whose path is shorter than the original calibration sample's
+// (see projectHeaderLen's doc comment) — a project header built on a fixed
+// ProjectHeaderLen would misdecode beat 0 at a 3-byte offset and then drift
+// further out of alignment on every later beat via KitBlockLen's
+// standalone-message tail, which doesn't belong between a Project's own
+// back-to-back embedded blocks (see kitBlockLenInProject). Every one of the
+// 16 beats in this capture shares the same name/short-name/BPM/swing, so a
+// misaligned decode would show it: garbled text, wildly implausible BPM
+// values, or decode errors, instead of the same clean values 16 times over.
+func TestProjectBeats_HardwareCapture(t *testing.T) {
+	raw, err := os.ReadFile("testdata/project-research/newbeat2_allempty.syx")
+	if err != nil {
+		t.Fatalf("reading capture: %v", err)
+	}
+	if got := sysex.Identify(raw); got != sysex.TypeProjectDump {
+		t.Fatalf("got message type %v, want TypeProjectDump", got)
+	}
+	unescaped := sysex.Unescape(raw)
+
+	beats, err := sysex.ProjectBeats(unescaped)
+	if err != nil {
+		t.Fatalf("ProjectBeats() error = %v", err)
+	}
+	if len(beats) != sysex.BeatsPerProject {
+		t.Fatalf("ProjectBeats() = %d beats, want %d", len(beats), sysex.BeatsPerProject)
+	}
+
+	for _, b := range beats {
+		if b.Name != "Basic Beat" || b.ShortName != "Beat1" {
+			t.Errorf("beat %d name/short = %q/%q, want %q/%q",
+				b.Index, b.Name, b.ShortName, "Basic Beat", "Beat1")
+		}
+		if b.BPM != 120 {
+			t.Errorf("beat %d BPM = %g, want 120", b.Index, b.BPM)
+		}
+		if b.Swing != 50 {
+			t.Errorf("beat %d swing = %g, want 50", b.Index, b.Swing)
+		}
+	}
+
+	// Three beats in this capture carry real notes; every other beat has
+	// none. A misaligned decode would either miss these (reading into the
+	// wrong block) or fabricate note-shaped noise in blocks that have
+	// none — checking both directions here, not just that these three are
+	// non-empty.
+	wantNoteCounts := map[int]int{9: 7, 10: 26, 13: 17}
+	for _, b := range beats {
+		want := wantNoteCounts[b.Index]
+		if len(b.Notes) != want {
+			t.Errorf("beat %d notes = %d, want %d", b.Index, len(b.Notes), want)
+		}
 	}
 }

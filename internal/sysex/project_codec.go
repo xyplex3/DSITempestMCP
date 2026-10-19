@@ -4,7 +4,8 @@ import "fmt"
 
 // EncodeProject returns a new Project (0x61) unescaped payload built from
 // base (an existing project's unescaped payload, used as a template): the
-// ProjectHeaderLen-byte project header is copied unchanged, and each of the
+// project header (see projectHeaderLen — its length depends on base's own
+// path, not a fixed size) is copied unchanged, and each of the
 // BeatsPerProject kit blocks is either copied unchanged from base or, for
 // an index present in edits, rebuilt via EncodeBeat against that block as
 // its own base — the same base-preservation approach EncodeBeat itself
@@ -14,13 +15,17 @@ import "fmt"
 // before any write tool is built on top of this, mirroring EncodeBeat's own
 // documented precondition.
 func EncodeProject(base []byte, edits map[int]*Kit) ([]byte, error) {
+	headerLen, err := projectHeaderLen(base)
+	if err != nil {
+		return nil, err
+	}
 	bounds, err := projectBlockBounds(base)
 	if err != nil {
 		return nil, err
 	}
 
-	out := make([]byte, ProjectHeaderLen)
-	copy(out, base[:ProjectHeaderLen])
+	out := make([]byte, headerLen)
+	copy(out, base[:headerLen])
 
 	for i, b := range bounds {
 		block := base[b[0]:b[1]]
@@ -29,6 +34,12 @@ func EncodeProject(base []byte, edits map[int]*Kit) ([]byte, error) {
 			if err != nil {
 				return nil, fmt.Errorf("beat %d: %w", i, err)
 			}
+			// EncodeBeat appends a trailing alignment tail meant for a
+			// STANDALONE Beat (0x5F) message's own wire packing (see
+			// kitBlockLenInProject's doc comment) — a Project-embedded
+			// block carries no such tail, so trim it back off here or
+			// every beat after this one misaligns.
+			encoded = encoded[:kitBlockLenInProject(len(kit.Notes))]
 			out = append(out, encoded...)
 		} else {
 			out = append(out, block...)
