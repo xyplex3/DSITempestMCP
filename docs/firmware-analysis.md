@@ -6234,3 +6234,55 @@ negative against the exact original template before treating it as
 settled; if it holds, that would make the 20-byte structure a
 genuinely Tempest-specific open question worth more attention than the
 now-explained 28-byte one.
+
+---
+
+## 71. The 20-byte structure's absence from sibling firmware re-verified with the exact original template - confirmed trustworthy this time; a real correction to §54's own template notation (2026-10-18)
+
+Direct, precision follow-up to §70's flagged caveat.
+
+**The exact §54 template was located and parsed byte-by-byte directly
+against Tempest's own known-positive site (`0x741f2`-`0x743be`) before
+touching the siblings - and this calibration step caught two real
+errors in §54's own compressed template description, worth
+correcting for the record:**
+
+1. The template's trailing `[00]` is actually **two** zero bytes
+   (offsets 18-19 of the 20-byte record), not one - §54's notation
+   summed to only 19 bytes, one short of the stated 20-byte period.
+2. The `~0x7F byte` field is genuinely approximate, not a typo-for-
+   exact-0x7F as might be assumed: of the 23 real instances, 22 have
+   that byte exactly `0x7F`, but the very last one has `0x78`.
+   Loosening the match to the range `0x70`-`0x7F` (every other byte
+   held exactly fixed) reproduces the documented count and bounds
+   exactly - 23 hits, `0x741f2` to `0x743be` inclusive - confirming
+   this is the correct, exact interpretation, not a looser guess.
+
+**With the corrected template locked in and proven against ground
+truth, the full-file scan of both siblings is a genuine, trustworthy
+negative: zero hits in Prophet 12 Keyboard 1.4.2.3, zero hits in
+Pro 2 1.4.0.1, under both the strict and loose byte-12 variants,
+searched across the complete 524,609-byte range of each file.** A
+decode-pipeline sanity check (counting the template's distinctive
+fixed-byte markers in all three files) ruled out a trivial "decoder
+broken" false negative - the marker bytes exist at comparable baseline
+rates in all three files, and the two candidate near-misses found in
+Prophet 12 were directly inspected and confirmed to fail the template's
+very next fixed field (incidental 2-byte coincidences, not a relinked
+copy of the real structure).
+
+**One incidental observation, not independently verified**: at
+Tempest's own known-positive site, the template's "2-byte variable"
+field spells out readable ASCII ("Basic...") across consecutive
+records - consistent with this being a per-character table entry for
+a preset/sound name, though this wasn't pursued further this session.
+
+**Where this leaves things**: this supersedes §70's provisional
+conclusion with a trustworthy one reaching the same answer - the
+20-byte structure is genuinely Tempest/Main-specific, not a shared
+toolchain artifact, in clear contrast to the 28-byte structure (§70).
+This specific question (does it appear in sibling firmware) is now
+properly closed. Its actual identity/purpose remains exactly as open
+as §51 left it; the one new, unverified lead worth a future look is
+the "Basic..." ASCII content noticed in the 2-byte variable field at
+the known-positive site.
