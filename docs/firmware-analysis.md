@@ -5760,3 +5760,84 @@ and check whether it matches the Tempest/P12 platform or the OB-6/Rev2
 one, which would sharpen the "two hardware eras" picture further. ICSP
 hardware access remains the most direct unblock specifically for the
 Tempest and is not superseded by this finding.
+
+---
+
+## 64. Pro 2 confirmed as a third product on the Tempest's platform; chip-photo search comes back genuinely empty, for documented reasons; a protocol-format footnote (2026-10-18)
+
+Direct follow-up to §63's two open next steps.
+
+**Finding 1 (positive): Pro 2 extends the shared-platform group to three
+products.** Found Pro 2's real OS download page
+(`sequential.com/support/download/pro-2-operating-system/` - the
+`/download-latest-pro-2-os/` URL tried in §63 is now a dead page, its
+download widget entirely absent from the static HTML, not merely
+JS-rendered) and its file
+(`Pro2_OS1.4ReadMe.zip` → `Pro2_Main_1.4.0.1.syx`). Decodes to exactly
+**524,609 bytes** - the same Tempest/Prophet-12 platform signature,
+not the OB-6/Rev2 one. Verified as a real structural match via a fresh
+three-way comparison (re-downloading Tempest and Prophet 12's files
+independently rather than trusting §63's numbers from memory):
+Tempest, Prophet 12 Keyboard, and Pro 2 all have identical **encoded**
+`.syx` length (599,559 bytes, exact), identical decoded length
+(524,609 bytes), the same 14-byte identical run in the decoded header
+(bytes 2-15: `40 0f 00 00 00 00 ff ff 00 10 00 00 00`), and the same
+tail shape (a long `0xFF` padding run ending in exactly one non-`0xFF`
+trailing byte, differing per product/version as expected for a
+per-build checksum field - consistent with, not contradicting, §62's
+finding that this byte isn't a *simple whole-file* checksum; it may
+still be some other per-build identifier). Content itself diverges
+heavily between products (91.7-94.7% byte-different pairwise) - the
+shared layout is a platform/toolchain fact, not evidence of shared
+application code, same caveat as §63.
+
+**This triples the pool of products whose chip photo would resolve the
+Tempest's identity by inheritance** - Pro 2 is a simpler, well-known
+mono/paraphonic synth that may be even more commonly serviced than
+Prophet 12.
+
+**Finding 2 (negative, but thoroughly and honestly so): no legible
+PIC32 chip photo was found for Prophet 12 OR Pro 2**, despite real,
+broad effort (Gearspace, KVR, Vintage Synth Explorer, Reddit, YouTube
+search, eBay/Reverb listings, Sequential's own support site,
+GitHub, FCC filings). Checked and ruled out several specific promising
+leads: a Synthtopia "tour inside" article's only image is a stock
+product photo, not a teardown shot; the Prophet 12 Module's FCC
+compliance statement is a generic Part 15 Class B declaration with no
+FCC ID (so no FCC-filed internal photos exist to check); Sequential's
+own official board-removal guides exist for several other products
+(Prophet-5/10, Prophet-6, Rev2, Prophet X/XL) but conspicuously not for
+Prophet 12 or Pro 2, confirmed by direct URL-pattern guesses. This
+negative is attributed to genuinely thin repair-community documentation
+for these two specific products, not under-effort.
+
+One **unverified** secondhand data point, flagged as a rumor, not
+evidence: a 2010s Gearspace thread title suggests a forum poster
+claimed "the digital part of the Prophet 12 is a PIC32 running at
+80MHz" - consistent with this project's own already-established
+finding, but the thread couldn't be fetched directly (Gearspace
+returns HTTP 403 to automated fetches) and only a search-engine
+snippet was seen, not the verbatim post or its sourcing. Not to be
+cited as confirmation of anything; a future session with different
+fetch tooling could try to verify it properly.
+
+**Finding 3 (a protocol-format footnote, useful beyond this specific
+chip-ID question): the SysEx header's "type" byte is not a universal
+"Main=0x71" code across the whole Sequential product line - it varies
+per product.** Observed headers: Tempest `F0 01 28 71`, Prophet 12
+`F0 01 2A 77`, Pro 2 `F0 01 2C 79`, OB-6 `F0 01 2E 7B`, Rev2
+`F0 01 2F 7C` (from §63). Byte 3 (the product ID) and byte 4 (the
+payload-type code) both vary per product even for the same logical
+content ("Main" firmware) - a future session decoding any other
+Sequential product's firmware should not assume `0x71` specifically
+means "Main," only that the 4-byte header scheme and manufacturer
+byte (`0x01`) are constant.
+
+**Where this leaves things**: the chip-identity search across sibling
+products is now reasonably exhausted for Prophet 12 and Pro 2
+specifically (OB-6/Rev2's separate, larger-flash platform doesn't help
+the Tempest's specific chip question and hasn't been searched - lower
+priority, since it's a confirmed different platform). ICSP hardware
+access remains the standing, unchanged recommendation - nothing found
+across §63-§64 supersedes it, only broadens which product's chip photo
+would help if one ever surfaces.
