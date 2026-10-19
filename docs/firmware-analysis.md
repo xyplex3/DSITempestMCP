@@ -6663,3 +6663,102 @@ independent of this specific table - resolving that fully would need
 either real 1.5.0.2 hardware testing (does "Rename Beat" show one
 screen or two?) or finding where "Initialize" itself defaults from in
 the firmware, not attempted here.
+
+---
+
+## 77. Where "Initialize" comes from: a previously-undocumented internal flash filesystem with factory template paths, not a shared mechanism with "Basic" (2026-10-18)
+
+Closes out §76's one remaining loose end, and surfaces a genuinely
+new piece of Tempest internals knowledge along the way.
+
+**No parallel widget-table exists for "Initialize" - confirmed
+negative, same method that found "Basic."** The exact 20-byte
+character-widget record signature used to find and confirm the
+"Basic" table was re-scanned across the whole 1.5.0.2 file (and
+1.3.0/1.4 for cross-check): only the already-known "Basic" chain
+exists; two other isolated hits are unrelated numeric-widget default
+records (digit `'0'`), not text. **"Basic" and "Initialize" are set
+by two genuinely different mechanisms**, not one shared default-
+initialization routine as a reasonable prior hypothesis suggested.
+
+**The real finding: a previously-undocumented set of internal flash
+filesystem paths, found as a literal, structurally parallel, null-
+terminated string table in multiple firmware versions**:
+
+```
+/P/Factory/Initialize
+/B/Init Beat
+/B/Factory/Initialize
+/S/Init Sound
+/S/Factory/Initialize
+```
+
+Confirmed **nearly byte-perfect** at file offset `0x76124` in 1.3.0
+(one spurious inserted byte at the very start, everything else exact
+hex-for-hex), with consistent fuzzy-matched parallels in 1.2.0.8
+(`~0x70e41`), 1.4 (`~0x755b4`-`0x755dc`), and 1.5.0.2 (`~0x778a5`,
+more degraded but structurally identical - note this sits ~13.5KB
+away from the "Basic" table at `0x741f2`, not adjacent, consistent
+with the "two separate mechanisms" finding above). Here, unlike the
+two menu-command-label sightings described next, **"Initialize"
+stands completely alone as the final path component** - exactly the
+isolated, value-like occurrence pattern distinguishing a real
+template-file reference from a UI string.
+
+**Two other "Initialize" sightings in 1.5.0.2 are confirmed to be
+ordinary menu-command labels, not default-value data**: a packed
+Sound-editing command list (`"Copy Sound … Initialize Sound … Rename
+Sound"`) and a parallel Beat-editing command list (`"Copy Beat …
+Initialize Beat … Rename Beat …"`) - both glue "Initialize" directly
+to the noun it operates on, the opposite pattern from the isolated
+path-table sighting.
+
+**A real, dated boundary found**: this entire `/B/`, `/S/`, `/P/`,
+`Factory/`-prefixed path convention is **confirmed absent from 1.1.3**
+
+- that version has no `/B/`, `/S/`, or `/P/` path fragments anywhere
+in the file, and its own "Initialize"-related text reads instead as
+in-code reset-logic phrasing (`"Initialize Project to defaults"`,
+`"Sound Initialized Successfully"`). The literal strings `"Init Beat"`
+and `"Init Sound"` DO already exist in 1.1.3, but only inside an
+unrelated template-EXPORT feature (`"...to export Init Beat template
+over MIDI"`), present from the earliest version. **This suggests the
+internal-filesystem/factory-template-loading mechanism was introduced
+in a refactor between 1.1.3 and 1.2.0.8**, replacing whatever simpler
+in-code reset logic 1.1.3 used.
+
+**Honest conclusion, stated precisely rather than forced toward either
+originally-proposed hypothesis**: the evidence doesn't cleanly support
+either "a separate hardcoded default string, built the same way as
+Basic" or "the menu label gets copied into the name field" - it points
+to a third, more specific and more plausible mechanism: `"Initialize
+Beat"`/`"Initialize Sound"`/`"Initialize Project"` most likely work by
+**loading a pre-built factory template file from the Tempest's own
+internal flash filesystem**, at paths literally named
+`/B/Factory/Initialize`, `/S/Factory/Initialize`,
+`/P/Factory/Initialize`. Loading that file wholesale would bring along
+whatever Name/ShortName fields were embedded in it when DSI authored
+it - plausibly "Initialize"/"Basic" by the same naming convention,
+explaining the hardware-observed result without needing a bare
+in-code constant. **This is a well-supported inference from the
+parallel path structure and matching hardware-observed behavior, not
+byte-level proof** - the actual template file's own internal Name
+field was never directly read (it isn't present in the OS-update
+`.syx` images at all, which carry only Main/Voice/Panel/SAM program
+code and strings, not the shipped factory content) - confirming it
+fully would need either disassembling the file-load call site or a
+real ICSP flash dump of the Tempest's actual internal filesystem.
+
+**Where this leaves things**: the "Basic"/"Initialize" thread (§72-77)
+is now about as resolved as pure firmware-text analysis can take it -
+real hardware behavior explained by two distinct, independently-
+identified mechanisms (a UI character-widget default-value table for
+"Basic," and an internal factory-template-file path convention for
+"Initialize"), plus a genuinely new, previously-undocumented fact
+about the Tempest's internal storage layout (a `/B/`/`/S/`/`/P/`-
+rooted path scheme with `Factory/` subdirectories) dated to a
+1.1.3→1.2.0.8 refactor. Going further on either the exact byte-level
+template-file format or the code that consumes these paths would need
+real disassembly (blocked on the base-address problem, §58-§69) or
+ICSP hardware access - this specific thread doesn't have a cheaper
+next step available.
