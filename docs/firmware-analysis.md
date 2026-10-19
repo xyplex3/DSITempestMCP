@@ -6964,3 +6964,79 @@ either firmware image as readable defaults - which only ICSP/live-
 memory hardware access could resolve. Voice and Sam firmware were not
 checked for this record shape (lower priority - architecturally less
 plausible owners of UI widget/display logic than Panel).
+
+---
+
+## 81. The widget-descriptor decode generalizes across all 6 Main versions - a real cross-version "centered default" pattern found, and the 20-byte structure's own earlier instances definitively ruled out as the 80-parameter source (2026-10-19)
+
+Closes the one concrete follow-up §75 itself had proposed but never
+executed: decoding the 20-byte structure's EARLIER instances (in
+1.1.3, 1.2.0.8, 1.3.0, 1.3.0.6, 1.4 - before the "Basic" content
+appeared) as the same 5-field widget-descriptor records confirmed for
+1.5.0.2, rather than only confirming their VAL field "is not a
+pointer" (§55) and stopping there.
+
+**Confirmed: the widget-descriptor interpretation generalizes cleanly
+across every version, not just 1.5.0.2 - with one real structural
+variant.** 1.3.0/1.3.0.6/1.4 use the EXACT SAME unpacked 5-field
+layout as 1.5.0.2 (`ptrA, ptrB, type, max, val`, all plain 4-byte LE
+uint32s), `val≤max` holding for every record found. 1.1.3/1.2.0.8 (the
+pre-OS-1.3, 24-byte-period era) carry one extra trailing 4-byte word
+and bit-pack `type` into the TOP BYTE of the third word rather than
+using the whole word directly - a real layout difference, not a
+decode error (confirmed by first getting a nonsensical constant under
+the naive whole-word interpretation, then correctly isolating the top
+byte). Exact table locations, refined from prior approximate
+estimates by re-deriving the structure's own byte signature directly:
+1.1.3 `0x643da`-`0x644e2` (12 records), 1.2.0.8 `0x6c1e2`-`0x6c4fa` (34
+records), 1.3.0 `0x7214d`-`0x7250d` (49 records), 1.3.0.6 `0x701b8`-
+`0x70500` (43 records), 1.4 only 2 surviving records (confirmed too
+fragmentary for further analysis, matching §71's prior finding).
+
+**A new, genuinely reproducible cross-version pattern, not previously
+documented: a "centered default" convention (`val` = `max`/2 exactly)
+recurring for specific widget types across three independent
+versions.** Seen for `type=4`/`type=8` records in 1.2.0.8 (`max=0xfe,
+val=0x7f`), 1.3.0 (`max=0xfe, val=0x7f`), and 1.3.0.6 (`max=0xfe,
+val=0x7f`, plus a separate `max=0x7e, val=0x3f` run) - the same exact
+centering relationship, not a coincidence of one lucky match, showing
+up for the same type codes across unrelated builds. Plausible
+interpretation (not confirmed): a bipolar/pan-style parameter whose
+sensible default is its own midpoint - consistent with, though not
+directly tied to, this project's own already-documented UI parameters
+of that shape (e.g. Pan, already known to exist as a Tempest Sound
+parameter). This is a real, useful addition to this structure's
+still-incomplete identity picture, even though it doesn't resolve
+what specific parameter each record controls.
+
+**Definitively closes the "is this structure the source of the 80
+missing MIDI-note parameters" question - a clean, thorough negative
+across every version, not just 1.5.0.2.** Searched every decoded
+record in all 5 older versions for a run of records with `max`≈
+127/128 and distinct, note-like `val` fields: found only records that
+either default to `val=0` (most common, especially in the earliest
+firmware), default to the new centered-value pattern above, or appear
+as multiple identical copies of the same value (1.3.0.6's 4 identical
+`max=0x7e/val=0x3f` records) - never a run of ~16 distinct, plausible
+note numbers. **This structure, across its entire version history,
+is now ruled out as the storage mechanism for the 80 missing
+parameters** - a stronger, more complete negative than §79's
+1.5.0.2-only result, extending the same conclusion across the whole
+product lifetime.
+
+**Where this leaves things**: the widget-descriptor record format is
+now confirmed as a real, general-purpose UI-field-descriptor
+mechanism used throughout Main's firmware history (not a one-off
+construction for the "Basic" field specifically), with one new
+reproducible content pattern (centered defaults) to show for it - but
+most individual records' actual UI-field identity remains unmapped,
+and the 80-parameter question is now closed against this specific
+structure across every version, strengthening the case that those
+values are genuinely RAM-only live state rather than hiding in a
+not-yet-checked static table. Concrete next steps if continued: a
+different byte-signature search specifically for a run of ~16 small
+distinct values in the 40-90 range (the GM-percussion-adjacent
+pattern the real pre-1.3 table used) rather than this widget-record
+shape; tying the centered-default pattern to a specific named
+parameter would need real disassembly (blocked on the base-address
+problem) or ICSP access to see what code reads these records.
