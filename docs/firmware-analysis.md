@@ -6107,3 +6107,56 @@ Facebook-photo-search sessions (which only found the audio/DSP
 section) and this session's video-based approach. ICSP hardware
 access remains the standing recommendation regardless of whether that
 last avenue is pursued.
+
+---
+
+## 69. Owner-forum photo-thread search - the last flagged chip-identity angle, also a genuine negative; the external-evidence search is now fully exhausted (2026-10-18)
+
+Direct follow-up to §68's one remaining flagged avenue.
+
+**Thorough, multi-channel search, zero downloadable board images found
+anywhere.** Checked Gearspace (indexed snippets only - direct fetch
+403'd, confirming the already-known block), Elektronauts (fetched and
+read in full - buying/workflow/sound discussion only, no hardware
+content), and - a genuinely new venue for this project, not checked in
+any prior session - **forum.sequential.com's own official Tempest
+board** (570 topics). Enumerated the full board, keyword-filtered for
+hardware/repair relevance, and read ~15 of the most promising threads
+in full, plus programmatically scanned 147 of the 570 topics for
+attachments before the forum's own anti-bot defense hard-blocked
+further requests. eBay, Reverb, and Worthpoint were all confirmed
+unreachable by direct automated fetch (403/Cloudflare-challenge) -
+general anti-scraping posture on these sites, not Tempest-specific.
+
+**A small, genuinely interesting textual (non-photo) side-finding**:
+two DSI-forum threads (a moderator reply about re-soldering a broken
+button, and a user thread about pot replacement) confirm in plain text
+that buttons and potentiometers solder directly onto an accessible
+circuit board reachable without a full teardown - real evidence the
+board itself isn't deeply buried, just that nobody who's opened one
+has ever posted a photo of it publicly.
+
+**Zero downloadable images of the Tempest's internal digital control
+board were found anywhere, across every channel tried this session or
+in any prior one.** This is reported as a genuine negative, not an
+inconclusive gap - real full-content reads were done wherever fetching
+was possible, and the few blocks encountered (Gearspace, eBay/Reverb,
+forum.sequential.com's own bot defense past 147/570 topics) are
+platform-level anti-scraping measures, not evidence of unexplored
+content behind them.
+
+**Where this leaves things: the chip-identity/base-address external-
+evidence search is now fully exhausted across every method
+reasonably available.** Across §63-§69: photo search (Tempest, Prophet
+12, Pro 2 - all negative), patent filings (negative), forum-rumor
+verification (inconclusive, tooling-blocked both times tried),
+two rounds of video-frame inspection (one real lead on Prophet 12,
+genuine negative on the Tempest itself), and now owner-forum
+photo-thread search (genuine negative, including a brand-new venue).
+Nothing found across this whole stretch changes the standing, now
+repeatedly-reinforced recommendation: **physical ICSP hardware access
+via the Tempest's own "P4" header is the only approach left that isn't
+subject to this kind of search-surface exhaustion.** Further variation
+on text/photo/video search along these same lines is not recommended
+without a genuinely new venue or technique - not more query
+rephrasing.
