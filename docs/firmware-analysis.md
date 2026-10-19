@@ -6849,3 +6849,69 @@ firmware-research scope - flagged here for visibility and left
 untouched, since fixing application code is outside this research
 thread's remit and this project's blocked/staged work must not be
 touched without the user's own review.
+
+**Update**: the user explicitly asked for this bug to be fixed, and it
+has been - see commit `edf9865` (outside this doc's own scope, in the
+tempest-mcp Go source). Root cause was two compounding bugs: the
+project header's length depends on its own variable-length path, not
+the fixed `ProjectHeaderLen` constant it was calibrated against; and
+the per-block length formula included a trailing alignment tail that
+belongs only to standalone Beat (0x5F) messages, not Project-embedded
+blocks. Both are fixed, with a new regression test checking semantic
+correctness (not just self-consistency) against this exact fixture.
+
+---
+
+## 79. Widget-descriptor-record hypothesis for the 80 missing parameters tested and ruled out - clean negative, with a real alignment pitfall caught along the way (2026-10-19)
+
+Direct follow-up to §75's incidental discovery of a UI widget-
+descriptor record format (5 little-endian uint32 fields per 20-byte
+record: `ptrA, ptrB, type, max, val`) - tested as a candidate storage
+mechanism for the 80 missing OS-1.3 MIDI-note parameter values, since
+`max`/`val` directly encode a UI field's range and current value (e.g.
+the already-seen `type=5/max=0x1f/val=3` reads exactly like "32-option
+select, current=3").
+
+**A genuinely useful methodological catch, worth remembering for any
+future scan of this record type**: the known table itself starts at
+file offset `0x7412a`, which is **not 4-byte-aligned** (`≡2 mod 4`) -
+a scan restricted to the "obviously safe" 4-byte-aligned grid would
+silently miss this table and anything structured like it. Every scan
+in this section checked every byte offset, not just aligned ones.
+A second real pitfall caught and fixed: an early pass that didn't
+explicitly exclude the degenerate all-zero record (`ptrA=ptrB=type=
+max=val=0`) produced over 100 spurious "runs" purely from the firmware's
+own zero-filled flash-padding regions - excluding that one case
+collapsed all of them to zero, confirming they were never real.
+
+**Clean negative, well-controlled, not just a quick miss**: an
+exhaustive full-file scan (all ~524,590 byte offsets) for runs of ≥3
+consecutive valid-looking widget records found **exactly one** run
+anywhere in the entire 524,609-byte 1.5.0.2 image - the already-known
+table itself. Zero elsewhere. This held under progressively loosened
+validation (type≤255, max≤4000 instead of the stricter initial
+bounds; accepting RAM address ranges for the pointer fields, not just
+flash) and under a completely independent complementary check (raw
+clustering of literal `0x7F`/`0x80` 32-bit values anywhere in the
+file, regardless of record structure) - both came back the same way.
+**The 80 missing parameters are not stored as widget-descriptor
+records anywhere in Main's flash image** - a specific, previously-
+untested hypothesis, now closed rather than left open.
+
+**Where this leaves things, and a real update to this long-running
+question's standing assessment**: this is the most structurally
+specific search yet tried for the 80 missing values (9+ attempts
+total across this whole investigation, now including real hardware
+SysEx data, §78, and this widget-record search), and it's the
+cleanest negative of the batch - no near-misses, no ambiguous partial
+matches. Two concrete possibilities remain, genuinely untested: (1)
+these parameters might only exist as live RAM state at runtime,
+never baked into Main's flash image as readable defaults at all -
+which would actually explain why every static-analysis attempt so far
+has failed regardless of technique, strengthening the case for ICSP/
+live-memory access as the only remaining path for this specific
+question; (2) Panel's firmware (not Main's) might be the real owner
+of this UI widget/display logic architecturally, and was never
+checked for this record type - a concrete, specific, not-yet-tried
+angle if anyone wants one more static-analysis attempt before
+concluding this needs hardware access.
