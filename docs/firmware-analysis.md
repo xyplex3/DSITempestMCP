@@ -6049,3 +6049,61 @@ Tempest-branded videos, not just Prophet 12's - the original Tempest
 photo searches (earlier sessions) were photo/image-search based and
 never did this kind of video-frame inspection. ICSP hardware access
 remains the standing, strengthened recommendation.
+
+---
+
+## 68. Tempest-specific teardown video search - genuine negative, plus one minor independent corroborating quote (2026-10-18)
+
+Direct follow-up to §67's one flagged avenue: applying the video-
+frame-inspection technique that found §66's Prophet 12 lead
+specifically to Tempest-branded video, which no prior session had
+tried.
+
+**Genuine negative, after real frame-by-frame inspection, not just
+title/snippet screening.** ~30 search-query variations were run and 4
+real candidate videos were fully downloaded and frame-extracted (not
+merely read about): a 2011 closed-case performance video, a 2022
+comedy review with no disassembly, a 2024 Sequential factory-tour
+video (real open-board footage, but entirely current-production
+Prophet-5 reissue/OB-X8/Prophet X - the discontinued Tempest never
+appears), and a 2017 DSI studio/office tour showing the actual repair
+bench with several open keybed synths visible (Pro 2/OB-6/P12-style
+boards) - but, again, no Tempest unit ever appears open in it either.
+Several false-positive-looking search hits were correctly screened out
+and excluded (an unrelated 1981 Atari "Tempest" arcade game sharing
+the search term; a 2009 DSI Evolver PIC-replacement video - a much
+older, almost certainly 8-bit PIC16/18 product, not PIC32-relevant).
+**No Tempest-branded video exists, among everything found and
+actually frame-checked, that shows the digital Main/Panel board with
+legible chip markings** - the Tempest appears to be too niche a
+product to have this kind of content publicly available, at least on
+YouTube.
+
+**One minor, genuinely new corroborating data point, found via text
+search rather than video**: a 2011 NAMM-show-floor blog post
+(sequencer.de) quotes a forum commenter recapping an in-person
+conversation: "There are several CPUs in the Tempest, a PIC32 running
+at 80MHz is the main processor." This is a **second, independent**
+source for "PIC32" specifically on the Tempest itself (not the
+Prophet 12, and not the same source as any prior PIC32-rumor
+mention in this document) - but it's still secondhand, gives no
+specific part suffix, and has no further corroboration. It adds minor
+weight to the already-independently-confirmed PIC32MX5XX/6XX/7XX
+family identification (established via this project's own instruction
+-level analysis, not from any rumor), but no new specificity toward
+the actual part number or the base-address problem.
+
+**Where this leaves things**: the external chip-identity search has
+now covered photo evidence (Tempest, Prophet 12, Pro 2 - all
+negative), patent filings (negative), forum-rumor verification
+(inconclusive, tooling-blocked), and video-frame inspection (found one
+real lead on Prophet 12, genuine negative on the Tempest itself) - a
+genuinely broad, multi-method search, not a narrow one. The one
+avenue not yet tried, flagged by the agent that ran this task: a
+still-photo (not video) search of owner-forum teardown/repair THREADS
+specifically for the Tempest (Gearspace/Muffwiggler), with actual
+image download and visual inspection - distinct from both the earlier
+Facebook-photo-search sessions (which only found the audio/DSP
+section) and this session's video-based approach. ICSP hardware
+access remains the standing recommendation regardless of whether that
+last avenue is pursued.
