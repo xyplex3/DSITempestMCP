@@ -5604,3 +5604,62 @@ dedicated CRC sweep if anyone wants to pursue it, but isn't blocking
 anything else. The firmware-content track has no other open threads
 left at this depth without either a new structural angle or the
 base-address/ICSP unblock.
+
+---
+
+## 62. The EOF-1 "checksum candidate" byte is NOT a standard whole-file checksum - an exhaustive, validated negative (2026-10-18)
+
+Direct follow-up to §61's open checksum lead (the one byte in the
+frozen footer where all 6 Main releases take mutually distinct
+values, at file offset `0x80140`, the literal last byte of the
+524,609-byte image).
+
+**Ran a genuinely exhaustive sweep, not a handful of guesses, and it
+comes back clean negative.** The CRC engine was validated first
+against the standard published check values for `"123456789"`
+(CRC-32/zlib, CRC-16/CCITT-FALSE, CRC-8/SMBUS, CRC-8/MAXIM-DOW all
+reproduced exactly) before trusting any result against the real
+firmware. Tested, each over the first 524,608 bytes of all 6 versions
+and compared against that version's actual last byte:
+
+- All 21 named CRC-8 variants with public names (SMBUS, MAXIM-DOW,
+  CDMA2000, DARC, ROHC, BLUETOOTH, SAE-J1850, GSM-A/B, etc.) - zero
+  matched more than 1 of 6 versions, and that one match was itself
+  coincidental (no corroboration elsewhere).
+- A **full brute-force CRC-8 sweep across all 2,048 possible parameter
+  combinations** (every one of the 256 possible 8-bit polynomials ×
+  2 init values × reflected-in/out × 2 xorout values) - best result
+  across the entire space was 2 of 6 versions matching, and the other
+  4 versions' deltas weren't a constant offset (which would have hinted
+  "right algorithm, wrong seed"). The match-count distribution across
+  all 2,048 combinations (2,008 combos matching 0 versions, 39 matching
+  1, only 1 matching 2, zero matching 3+) is statistically
+  indistinguishable from what pure chance predicts for an 8-bit output
+  checked against 6 independent values - i.e. genuinely no signal, not
+  a near-miss.
+- 9 named CRC-16 variants and 6 named CRC-32 variants (checked via low
+  byte, high byte, and byte-XOR extraction) - no match reached even the
+  3-of-6 reporting threshold for any of them.
+- Simple non-CRC conventions (plain sum mod 256, one's-complement sum,
+  Fletcher-8/16-style running sums, and a sum restricted to only the
+  already-known 40-41 differing-position bytes rather than the whole
+  file) - none matched any version either.
+
+**This is a real, validated negative for the specific hypothesis
+tested** ("EOF-1 is a standard whole-file checksum, computed with a
+canonical init value, over the entire preceding 524,608 bytes") - not
+proof there's no checksum anywhere, but it closes out that specific,
+large, well-defined hypothesis space rather than leaving it an
+open-ended guess. What's NOT ruled out and would need a different,
+narrower approach if pursued further: a checksum over a smaller or
+different byte range than the whole file (e.g. just the loaded/
+code+data region, excluding this footer itself); a non-canonical seed
+value outside {0x00, 0xFF}; or the byte simply not being a checksum at
+all (a build/version marker unrelated to file content).
+
+**Where this leaves things**: given this result's exhaustiveness and
+the project's standing ICSP recommendation already covering the
+higher-value unblock, this specific question (is EOF-1 a simple
+whole-file checksum) is considered closed/negative. Not worth
+revisiting with more brute force along the same lines without a
+concrete, narrower candidate range or seed to test.
