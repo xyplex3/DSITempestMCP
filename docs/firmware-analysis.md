@@ -6360,3 +6360,70 @@ anything that could explain why this specific entry is new at this
 exact version; try a looser template match across 1.5.0.2 to check for
 additional, less-rigidly-formatted name entries elsewhere in the same
 structure family.
+
+---
+
+## 73. Why "Basic" is new at 1.5.0.2 remains unexplained by official docs; no second name table exists in the same structure family - two clean negatives, plus one genuinely interesting new fact (2026-10-18)
+
+Direct follow-up to §72's two flagged leads.
+
+**Task A - the official addendum does not explain the new entry, a
+real negative, not a search gap.** Read the entire "Tempest OS 1.5
+Addendum" section of the local `Tempest_Addendum_OS1.4-1.5.pdf` in
+full - it covers exactly one topic end to end (the 6-voice allocation/
+priority algorithm) and never mentions default Beat/Project naming, a
+new preset, or any factory-default-content change. The literal word
+"Basic" does appear once elsewhere in the same PDF, but in the OS 1.4
+section, as an *existing Sound name* shown in an unrelated screenshot
+caption illustrating a selective-copy UI feature - checked carefully
+and ruled out as a stretch-connection, not the source of this firmware
+construction. **Why this specific entry is new exactly at 1.5.0.2
+remains genuinely unexplained by any official document available.**
+
+**Task B - no second table of this kind exists anywhere in the same
+firmware, confirmed three independent ways.** Starting from the
+strict template (reproducing the known 23-record block exactly, as a
+sanity check), three loosenings were tried: widening the `~0x7F` byte
+to any value (zero additional hits - that byte was never the limiting
+constraint), dropping the VAL-repeat requirement (found only a few
+extra blank/null records immediately flanking the already-known
+block, no new content), and a general outcome-based search for ANY
+≥5-record run of legible text at a 20-byte stride anywhere in the file
+(451 raw candidates, checked against a byte-shuffled control - any
+run of length 8+ is well above the shuffled baseline's max of 2 - but
+every one of them, on manual inspection, resolved into either an
+already-known ordinary contiguous string table (the error-message
+table containing "Failed to read sequence data," OS-version/menu
+text, or the factory sound-name table) being incidentally sampled at
+an unlucky stride, or a genuine false-positive source worth
+remembering: a 4-byte binary pointer-like table (pattern `9d XX YY 01`
+repeating) whose values coincidentally fall in printable-ASCII range
+when sampled every 20 bytes (a multiple of 4), mimicking a legible
+run. **No real second name table was found** - this is a real,
+well-controlled negative, not an under-search.
+
+**One genuinely interesting new fact, worth keeping regardless of the
+two negatives above**: the literal string "Basic" does **not** exist
+anywhere in the firmware as an ordinary contiguous null-terminated
+ASCII string - unlike every other string in the file (error messages,
+menu text, sound names, all found as normal contiguous text during
+this same search). **It exists only via this unusual one-character-
+per-20-byte-record layout.** This strengthens the case that the
+"Basic" block is a deliberately different, special-purpose
+construction - plausibly written by a small, separate default-
+initialization routine (e.g. at boot or save time) rather than being
+part of the firmware's normal string-table machinery, which would
+otherwise have stored it as an ordinary string like everything else
+findable in this file.
+
+**Where this leaves things**: both flagged follow-ups came back
+negative, but cleanly and informatively so - the "Basic" block is now
+well-characterized as an isolated, deliberately unusual construction,
+not one instance of a larger table, and not explained by any
+available documentation. If continued: diff the full 1.4→1.5.0.2
+firmware images to see what else changes in the same code region as
+the Basic block (functional context rather than documentation); check
+whether "Basic" appears as a literal factory Beat/Project name in the
+OS 1.4/1.5 sound-set content itself. The incidentally-rediscovered
+4-byte pointer-like table at ~`0x72180`-`0x721b0` is flagged as an
+unrelated, unexplored side-observation, not pursued further here.
