@@ -5663,3 +5663,100 @@ higher-value unblock, this specific question (is EOF-1 a simple
 whole-file checksum) is considered closed/negative. Not worth
 revisiting with more brute force along the same lines without a
 concrete, narrower candidate range or seed to test.
+
+---
+
+## 63. Prophet 12 Keyboard shares the Tempest's exact Main-processor firmware platform - verified, not just a size coincidence; OB-6/Rev2 form a separate, larger platform (2026-10-18)
+
+A new angle, prompted by the base-address problem having exhausted all
+local computational approaches (§58): rather than analyzing the
+Tempest in isolation, check whether other DSI/Sequential products from
+the same era share hardware/toolchain DNA that could eventually supply
+external ground truth (e.g. via a legible chip photo on a more
+commonly serviced product).
+
+**Downloaded and decoded four other Sequential products' current
+"Main"-processor OS files directly from sequential.com** (same
+unescape scheme as the Tempest, same 4-byte header convention `F0 01
+<product-id> <type>`, manufacturer byte `01` constant across all of
+them): Prophet 12 Keyboard 1.4.2.3, OB-6 1.2.0, Prophet Rev2 1.2.5.0.0,
+plus confirmation that Pro 2 exists on a current download page (its
+direct file URL is JS-rendered and wasn't extracted this session).
+Every product uses the identical "Main" processor-role naming
+convention as the Tempest's own `Tempest_Main_<version>.syx` - a
+shared engineering/firmware convention across the whole product line,
+independent of anything else below.
+
+**Headline finding: Prophet 12 Keyboard's Main firmware decodes to
+exactly 524,609 bytes - byte-for-byte the same size as the Tempest's,
+including the same "321 bytes over 512KB" signature already documented
+for the Tempest alone.** This is not a coincidental size match - it
+was checked against this project's own shuffled-byte noise-baseline
+standard before being trusted:
+
+- First 32 bytes of Tempest vs. P12: 14/32 identical, including a
+  **12-consecutive-byte identical run** at offset 4-15 (too long to be
+  chance) - both start with a MIPS `JAL`-opcode-pattern instruction,
+  consistent with a shared reset-vector convention.
+- Whole-file aligned match rate, Tempest vs. P12: **8.28%**, against a
+  **2.73%** noise floor from byte-shuffling P12's own decoded content
+  (same byte-value distribution, destroyed alignment) - roughly 3x the
+  noise floor, a genuine signal, though still mostly different content
+  as expected (same chip/toolchain, different application code).
+- **A 14,794-byte trailing run of `0xFF` flash-erase padding starts at
+  the identical file offset `0x07977c` (497,020) in BOTH files** - i.e.
+  Tempest's and P12's actual used-code regions end at the exact same
+  offset before the shared padding tail, not merely "the two files
+  happen to total the same length." (Note: `0x07977c` is also the
+  exact offset flagged in §56/§59 as the start of Main's own sparse
+  used-flash tail region in the Tempest alone - an internal cross-check
+  that this is the same real landmark, not a new, unrelated number.)
+- The only other long aligned matches inside the file bodies are
+  generic MIPS O32-ABI function-epilogue sequences (`lw $ra,0x1c($sp)`
+  chains) - expected shared-compiler/ABI boilerplate, explicitly not
+  claimed as shared application-level source.
+
+**Conclusion: strong, verified evidence that the Tempest's and
+Prophet 12's Main CPUs are the same PIC32 part (or an identical-
+capacity member of the same family), built with the same toolchain and
+linker conventions** - not just "also MIPS," a specific shared flash
+footprint and boot-header structure.
+
+**A second, separate platform identified**: OB-6 and Prophet Rev2
+decode to exactly 1,049,217 bytes each (641 bytes over 1MB), a larger
+and distinct footprint from Tempest/P12's. First 32 bytes: OB-6 vs.
+Rev2 = 29/32 identical (a near-identical boot header), vs. only 5/32
+for either against Tempest. This independently confirms (via firmware
+content, not just a secondhand claim) a 2016 interview quote from Dave
+Smith that the OB-6's main board "is identical" to the Prophet-6's -
+extending that platform-sharing claim to Rev2 as well, on this
+project's own evidence.
+
+**Honest negatives, real effort spent, nothing stretched**: no legible
+PIC32 part-number photo was found for ANY Sequential/DSI product
+(Tempest, P12, OB-6, Rev2, Prophet-6, Prophet 08) across web search,
+forums, eBay listings, or official teardown/repair guides - this was
+the original ask and it came back empty. No FCC filing found under
+"Dave Smith Instruments" or "Sequential" on fccid.io. No GitHub/
+Hackaday/community firmware-disassembly project exists for any
+product in this line - the only public community work found is
+wire-protocol-level, not firmware-internal (a GitHub gist mapping the
+Tempest's parameter SysEx message bit layout, and a related Gearspace
+thread about a browser-based editor built on it - relevant to this
+project's separate SysEx-wire-protocol thread, not the firmware
+thread).
+
+**Where this leaves things**: the base address itself is still
+unresolved - this finding doesn't hand over a number. But it changes
+the shape of the hardware-photo search: **Prophet 12 is now a better
+target for a legible chip photo than the Tempest itself**, since it's
+a more commonly serviced/discussed product and any part number found
+on its board can be applied to the Tempest by inheritance, given the
+verified-identical platform above. Concrete next steps if continued:
+search specifically for Prophet 12 teardown/repair photos (rather than
+Tempest ones, which have already been exhausted per earlier sessions);
+track down the Pro 2 OS file's actual URL (needs a JS-capable fetch)
+and check whether it matches the Tempest/P12 platform or the OB-6/Rev2
+one, which would sharpen the "two hardware eras" picture further. ICSP
+hardware access remains the most direct unblock specifically for the
+Tempest and is not superseded by this finding.
