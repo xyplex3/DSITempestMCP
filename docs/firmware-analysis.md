@@ -6762,3 +6762,90 @@ template-file format or the code that consumes these paths would need
 real disassembly (blocked on the base-address problem, §58-§69) or
 ICSP hardware access - this specific thread doesn't have a cheaper
 next step available.
+
+---
+
+## 78. The 80 missing OS-1.3 MIDI-note parameter values: a 9th attempt, using real hardware SysEx data for the first time - rigorous, well-controlled negative (2026-10-18)
+
+Applies this session's own breakthrough technique (cross-checking
+against real hardware-captured SysEx test fixtures already in this
+repo, decoded with the project's own validated Go decoder - the same
+approach that resolved the "Basic"/"Initialize" thread, §72-77) to
+the single oldest unresolved question in this whole investigation:
+where the 80 OS-1.3+ individually-editable "MIDI Note:" parameter
+values (Pad A1-16/B1-16, Mute A1-16/B1-16, Beat 1-16) are actually
+stored, after 8+ firmware-only attempts across many sessions all
+failed.
+
+**A real, pre-existing table was found and directly ruled out as a
+candidate - a useful negative in its own right.** This repo's own
+code already has a confirmed `KitPadTableOffset=52`, 32 entries of 30
+bytes each (`KitPadEntryLen`/`KitPadEntryCount`) in a decoded Beat
+payload - structurally matching the "32 Pad A1-16/B1-16" parameter
+count. Decoding this table from real Beat test-fixture captures shows
+its actual fields don't look like MIDI notes at all: one byte position
+holds mostly near-maximum values (consistent with a level/velocity
+field), another holds small mostly-distinct small integers (consistent
+with a sound-bank-slot index), and the Bank-B half of the table (pads
+17-32) is byte-identical boilerplate across every fixture - untouched
+placeholder data, not real per-pad content. **Confirmed: this
+pre-existing table is a pad-to-sound/level assignment table, not a
+MIDI-note table** - ruling out one plausible candidate cleanly rather
+than leaving it ambiguous.
+
+**Exhaustive, well-controlled searches across every real hardware
+capture in the repo (6 Beat, 3 Sound, 1 Project fixture) all came back
+negative**:
+
+- The exact, already-confirmed pre-1.3 default 16-value note table
+  (A1-A16 = `69,54,40,38,46,50,47,43,77,39,37,36,42,51,49,55`) does
+  not appear byte-for-byte anywhere in any of the 10 fixtures.
+- No run of ≥16 consecutive bytes in a GM-percussion-plausible range
+  exists anywhere in a full Beat or Project payload, at any fixed
+  stride from 1 to 300 bytes - **and, applying this project's own
+  standing anti-coincidence rule, a 200-trial shuffled control of the
+  same data also found zero such runs**, confirming the search method
+  has real power to detect such a structure if it existed, not just a
+  method that's too strict to find anything.
+- A broader generalized stride-scan (any 16 or 32 pairwise-distinct
+  values in range, any stride/offset) found hits only at one already-
+  explained structure: the per-kit track-order table (a repeating
+  pairwise-swap sequence, `01 00 03 02 05 04...`, recurring exactly
+  every `KitBlockBaseSize` bytes) - a real, instructive false-positive
+  example of exactly the kind of coincidental range/distinctness match
+  this project's methodology warns against, caught and correctly
+  excluded rather than mistaken for a finding.
+- The Project fixture's header region where a settings table might
+  plausibly sit is confirmed entirely zero-filled, not populated with
+  plausible non-zero defaults.
+
+**Where this leaves things**: a genuinely new data source (real
+hardware SysEx captures) and search technique have now been applied
+to this question for the first time, and the result is a real,
+well-controlled negative - not just another repeat of the same
+firmware-only approach. This reasonably supports (though doesn't
+prove) a new hypothesis: these 80 parameters may be global/system-
+level settings, transmitted (if at all) via a SysEx message type not
+represented anywhere in this repo's current test fixtures, rather than
+living inside a Project, Beat, or Sound dump. If this project ever
+captures or obtains a "Global"/"System Settings"-type SysEx dump, or
+gets ICSP flash access, that would be the next place to check - no
+further search of the existing Project/Beat/Sound fixtures is likely
+to be productive without new data.
+
+**A separate, real software defect was incidentally found and flagged,
+unrelated to this research question**: `ProjectBeats()`
+(`internal/sysex/project_codec.go`) appears to mis-decode block
+boundaries for some beats within the `newbeat2_allempty.syx` fixture -
+implausible BPM values and a name string straddling what should be a
+field boundary, for beats past index 0. The existing round-trip tests
+(`TestEncodeProject_RoundTrip`/`TestEncodeProject_EditsOneBeat`) can't
+catch this because they only verify decode→re-encode self-consistency,
+not semantic correctness, and this fixture's total length happens to
+tile evenly under the current (seemingly incorrect) boundary
+assumption. **This is a genuine, if narrow, bug report for the
+tempest-mcp application itself** - separate from this document's
+firmware-research scope - flagged here for visibility and left
+untouched, since fixing application code is outside this research
+thread's remit and this project's blocked/staged work must not be
+touched without the user's own review.
