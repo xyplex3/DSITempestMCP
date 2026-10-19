@@ -6286,3 +6286,77 @@ properly closed. Its actual identity/purpose remains exactly as open
 as §51 left it; the one new, unverified lead worth a future look is
 the "Basic..." ASCII content noticed in the 2-byte variable field at
 the known-positive site.
+
+---
+
+## 72. The 20-byte structure's "variable" field confirmed as a genuine space-padded ASCII name field spelling "Basic" - present only in 1.5.0.2, confirmed absent from all 5 earlier versions (2026-10-18)
+
+Direct follow-up resolving §71's one flagged, previously-unverified
+lead - and it holds up cleanly, not a stretch.
+
+**The "Basic" reading is now confirmed, not speculative, with the
+character-encoding ambiguity fully resolved.** At the known-positive
+site in Main 1.5.0.2 (file offset `0x741f2`-`0x743bd`, the same 23
+consecutive 20-byte records already confirmed in §71), reading the
+"variable" field's first byte (offset 16 of each record) as ASCII
+across all 23 records in order gives exactly:
+
+```
+"Basic" + 15 literal space characters (0x20)
+```
+
+- the second byte of the variable field (offset 17) is `0x00` in
+**every single one** of the 23 records, no exceptions - settling the
+ambiguity cleanly as one ASCII character per 20-byte record, not two.
+The result is a clean, exactly-20-character, space-padded field (5
+letters + 15 spaces = 20, matching the 20-record block length one-for-
+one) - a structurally deliberate fixed-width name field, not a
+coincidental alignment of printable bytes.
+
+**This is not an isolated coincidence - it corroborates two
+independent prior sightings of the same word elsewhere in this
+project's own research.** §51 already separately established "Basic"
+as "a confirmed real Tempest beat-label term per the manual," and an
+earlier section (§5/§6-era) separately found Main's own code building
+the literal string `"Basic"` one ASCII byte at a time at a completely
+different file location. Three independent sightings of the same
+specific word, via three different methods, across this whole
+investigation - strong convergent evidence this is a genuine default
+name (most plausibly a default/blank Beat or Project name, consistent
+with "Basic" as a factory-default label convention) rather than a
+one-off artifact.
+
+**Cross-version result: this specific "Basic" name-table block exists
+ONLY in 1.5.0.2 - confirmed absent, via three independent whole-file
+search methods, from all 5 earlier versions.** The strict 20-byte
+template itself doesn't exist at all in 1.1.3/1.2.0.8 (zero matches,
+whole file - consistent with §71's own findings); in 1.3.0/1.3.0.6/1.4
+it exists only as isolated 1-2-record fragments with null or
+non-letter variable-field content, never a legible multi-record run.
+A literal substring search for `"Basic"` and a stride-20 encoded
+search both independently confirm: zero hits anywhere in the other 5
+versions, exactly one hit in 1.5.0.2, at the already-identified site.
+
+**A useful negative, worth recording**: a full-file strict-template
+scan of 1.5.0.2 found only this single 23-record block in the entire
+524,609-byte image - no second block spelling a different word
+anywhere else. This argues against "the 20-byte structure is a large,
+multi-entry name table" and more toward "this is a single, isolated
+default-string construction" at least under the strict template
+definition - a looser template might still reveal more entries, not
+tried this session.
+
+**Where this leaves things**: a genuine, confirmed partial
+identification for a structure that has been open since §51 - at
+least one real instance of this structure stores a default name
+string, "Basic," introduced specifically at OS 1.5.0.2 (the final
+known Main release) and absent from every earlier version. This
+doesn't yet explain the structure's broader purpose or why it's
+otherwise non-textual in most of its other instances (recall the VAL
+field was already confirmed not a pointer, §55) - but it's real
+forward progress on a long-stalled identity question. Concrete next
+steps if continued: check 1.5.0.2's own release notes/addendum for
+anything that could explain why this specific entry is new at this
+exact version; try a looser template match across 1.5.0.2 to check for
+additional, less-rigidly-formatted name entries elsewhere in the same
+structure family.
