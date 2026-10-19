@@ -6587,3 +6587,79 @@ is closer to firmware text already identified (§46) as mentioning an
 cross-checked this session); apply the same widget-record decode to
 the 1.3.0/1.3.0.6 sites from §54 to see if a partial name field
 narrows down exactly when this UI feature was first added.
+
+---
+
+## 76. §75's tension resolved: a UI-design change at 1.5.0.2 explains why no paired long-name table exists - "Basic" is Beat-related after all (2026-10-18)
+
+Direct, well-evidenced resolution of §75's flagged open question.
+
+**No paired long-name default table exists anywhere - confirmed as a
+clean negative across all 6 firmware versions.** A full-file, byte-
+by-byte scan (not approximate-offset-only) for a second run of ≥3
+consecutive 20-byte template records with legible text found nothing
+anywhere in any of the 6 images. The isolated single-record template
+matches at the already-known approximate sites in 1.3.0, 1.3.0.6, and
+1.4 were individually inspected and their byte-16 values reported
+exactly: mostly null, plus one stray `'x'`, one `'$'`, one space - no
+fragment of "Basic" or any other word. **The record/table mechanism
+itself already exists at the same relative location in all three
+earlier versions - only its name field is essentially always empty
+there.** This confirms the "Basic" content specifically (not just the
+table slot) is new at 1.5.0.2, consistent with §73/§75, and rules out
+a simple "I missed a second table" explanation for the single-field
+puzzle.
+
+**The real explanation: a genuine Rename-Beat UI redesign, found as
+plain reconstructed UI prompt text (not the 20-byte structure) in all
+6 versions.** Two distinct designs exist across the firmware's
+lifetime:
+
+- **Two-field "wizard" style** - separate `"New Beat Name (Curs
+  L/R)"` and `"New Short Name (Curs L/R)"` prompts, found in **1.3.0,
+  1.3.0.6, and 1.4** - exactly matching the two-step UI the Tempest
+  manual itself documents (the manual editions consulted in §75 are
+  from this same 1.3-1.4 era).
+- **Single-field style** - one combined `"Edit Beat Name (Curs L/R)"`
+  prompt, paired 1:1 with the Sound-rename flow's own single prompt -
+  found in **1.1.3, 1.2.0.8, AND 1.5.0.2**. No "Short Name" string
+  exists anywhere in these three files (double-checked - the only
+  "Short" hits anywhere are factory sample names like "Short Cow").
+
+**This is the key resolving fact: 1.5.0.2 - the exact version where
+the new, populated "Basic" table first appears - is also the version
+whose Beat-rename UI reverted to the older single-field style**,
+matching 1.1.3/1.2.0.8's original design rather than 1.3.0-1.4's
+two-step wizard. This is fully consistent with, and strengthens, §74's
+hardware-data conclusion over §75's positional inference: by 1.5.0.2,
+Beat naming appears to be functionally single-field again, which
+directly explains why no separate paired long-name default table
+exists anywhere - there's genuinely only one field to default. The
+manual's "two separate fields" description most likely reflects the
+1.3-1.4-era UI it was written against, not 1.5.0.2's simplified
+design - not independently confirmed against hardware, but a clean,
+coherent explanation that resolves the tension rather than leaving it
+open.
+
+**A secondary, independent sighting of "Basic" recurring in Tempest's
+own factory content**: a degraded factory path `"/P/Projects/Basic
+Project"` was found as plain text in 1.4 - a factory Project literally
+named "Basic Project," independent of the Beat short-name mechanism.
+This reinforces (a third time, after §51's manual cross-reference and
+§74's hardware-data finding) that "Basic" is a real, recurring
+Tempest-ecosystem default-naming root, not a one-off coincidence.
+
+**Where this leaves things**: §75's open tension is now resolved in
+favor of §74's hardware-confirmed conclusion - "Basic" is Beat-related
+(most likely the real-world default name/short-name value for a
+freshly-initialized Beat), and the reason the firmware shows only a
+single-field table is a genuine UI/data-model simplification at
+1.5.0.2, not a sign the table is actually Sound-related. The one
+remaining untested detail, flagged honestly rather than assumed: it's
+not confirmed whether 1.5.0.2's single UI field truly replaces the
+short-name concept entirely, or whether the long name ("Initialize" in
+the hardware captures) is set through a different mechanism
+independent of this specific table - resolving that fully would need
+either real 1.5.0.2 hardware testing (does "Rename Beat" show one
+screen or two?) or finding where "Initialize" itself defaults from in
+the firmware, not attempted here.
