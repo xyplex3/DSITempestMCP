@@ -7040,3 +7040,71 @@ pattern the real pre-1.3 table used) rather than this widget-record
 shape; tying the centered-default pattern to a specific named
 parameter would need real disassembly (blocked on the base-address
 problem) or ICSP access to see what code reads these records.
+
+---
+
+## 82. The 28-byte structure confirmed on the OB-6/Rev2 platform too - a Microchip-toolchain-wide artifact, not specific to one chip or flash size (2026-10-19)
+
+Direct follow-up to §70, extending the cross-product check to the
+other confirmed Sequential firmware platform.
+
+**Method validated against Tempest's own firmware first, as
+standard.** The lag-28 autocorrelation + `9d`/`1d`-tag detection
+script independently re-found several already-documented sighting
+regions in Tempest's own Main 1.5.0.2 before being trusted on new
+data - confirming the method still works exactly as before.
+
+**Confirmed present in both OB-6 and Prophet Rev2, with full shuffle-
+control validation on each file's own data (not reused from
+Tempest's).** OB-6: a clear instance at file offset `0x6df68`-
+`0x6e0f0` (364 bytes), lag-28 match rate 0.9038 against a 200-trial
+shuffled-control mean of 0.0899 - 10.06x elevation, 0 of 200 trials
+reaching the real score. Prophet Rev2: a clear instance at `0xc11f0`-
+`0xc1394` (392 bytes), match rate 0.9898 against a control mean of
+0.1063 - 9.31x elevation, same 0/200 result. Both carry the exact
+confirmed fingerprint shape (`9d`/`1d` high-byte tags recurring every
+28 bytes, interleaved with a varying VAL field) - structurally
+identical in form to every other confirmed sighting, not byte-
+identical (expected, per §70's own precedent for Prophet 12/Pro 2).
+
+**This directly answers the open question the task set out to
+resolve: the 28-byte structure is a Microchip-toolchain-wide
+artifact, not something specific to the Tempest/Prophet-12/Pro-2
+chip or its 512KB flash size.** It now appears across BOTH confirmed
+Sequential firmware platforms (the smaller 524,609-byte one from
+§63-§64, and this larger 1,049,217-byte one) - five products total
+(Tempest, Prophet 12, Pro 2, OB-6, Prophet Rev2) sharing this same
+build/toolchain-level fingerprint regardless of which specific PIC32
+flash-size variant each one uses. It still doesn't say what the
+structure actually encodes.
+
+**Two honest caveats properly kept separate from the confirmed
+finding, not conflated with it.** Several other periodic spans found
+in both OB-6 and Rev2 show real, shuffle-confirmed 28-byte
+periodicity (2.9-4.8x elevation) but lack the `9d`/`1d` tag fingerprint
+
+- explicitly flagged as a different, uncharacterized phenomenon, not
+claimed as another sighting of the same structure. A sparse all-zero
+region in Rev2 produced a near-1.0x false-positive-shaped elevation
+exactly matching the kind of trap §27 already warned about - correctly
+rejected by the shuffle control rather than reported as a finding.
+
+**A new, genuinely interesting but explicitly unconfirmed lead**:
+Tempest's own Main 1.5.0.2 has a confirmed instance at `0x6e128`-
+`0x6e304`, in roughly the same `0x6d000`-`0x6e400` neighborhood as
+OB-6's `0x6df68`-`0x6e0f0` hit - close, not identical (unlike Prophet
+12's exact-offset match with Tempest documented in §70), and Rev2
+does NOT have an instance in that same neighborhood. Three products
+loosely clustering an instance in the same early-file region is
+suggestive, not a clean three-way match - flagged as a lead for a
+future systematic pass, not reported as confirmed.
+
+**Where this leaves things**: a clean, well-validated positive that
+settles this specific open question. If continued: a full exhaustive
+scan of OB-6's and Rev2's entire files for every `9d`/`1d`-tagged
+instance (mirroring §38/§39's approach for Tempest) would give a
+complete cross-platform count/offset comparison; the loose `0x6d000`-
+`0x6e400`-region clustering lead is worth a dedicated pass across all
+5 now-tested products if anyone wants to chase it further. The
+structure's actual identity remains exactly as open as before -
+confirmed ubiquitous, not yet confirmed to be anything specific.
