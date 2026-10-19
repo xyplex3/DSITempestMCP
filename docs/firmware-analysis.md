@@ -5895,3 +5895,77 @@ to a different kind of lead entirely, the one method not yet
 systematically tried is downloading and visually inspecting candidate
 teardown/listing photos directly (rather than relying on text-search
 summaries of what a photo might show) - untested, not yet ruled out.
+
+---
+
+## 66. A specific PIC32 part number candidate found: PIC32MX695F, via a hobbyist teardown video caption - a real lead, explicitly not yet independently confirmed (2026-10-18)
+
+Direct follow-up to §65's one remaining untried method: actually
+downloading and visually inspecting candidate photos/video, rather
+than trusting text-search summaries of what they show.
+
+**What was found**: a 2014 hobbyist teardown video of a Prophet 12
+Keyboard ("MF#5 inside the Dave Smith Prophet 12 synthesizer
+keyboard," YouTube, creator markusfuller - this video had already
+surfaced in an earlier session's TEXT search and been dismissed as
+"just a tour," because nobody had actually watched it frame-by-frame
+before this session). At approximately 4:30-5:12 into the video, the
+creator's own on-screen caption overlay reads **"Microchip PIC
+32MX695F"** over a shot of a square TQFP-style chip on the synth's
+control board, alongside a separate caption reading "ADSP 21479 4th
+gen Shark processors" over six visible DSP chips on the same board
+(independently consistent with a secondhand "6x24179 4th gen SHARCs"
+claim already seen in a 2017 KVR Audio forum thread - almost certainly
+a typo there for the real part, ADSP-21479).
+
+**What is actually confirmed vs. what remains a third-party claim -
+this distinction matters and must not be collapsed**:
+
+- **Confirmed directly**: the caption text itself, pixel-verified via
+  a direct crop/zoom of the rendered overlay text, unambiguously reads
+  "Microchip PIC 32MX695F."
+- **NOT independently confirmed**: that this caption is correct. The
+  underlying physical chip's own printed marking could not be read
+  directly - the presenter's finger covers the chip's face in the
+  sharpest-focus frames, and in frames where it doesn't, the source
+  footage (854x480 handheld video, further compressed) is below the
+  resolution needed to resolve printed characters, even after upscale/
+  sharpen processing. **This is a single hobbyist's caption, not this
+  project's own pixel-level read of the silicon** - a strong lead, not
+  a settled fact, and should be reported and used as such.
+
+**A real, non-trivial convergence with this project's own prior,
+independently-derived evidence**: PIC32MX695F512H/L is confirmed as a
+real current Microchip part, in the exact same PIC32MX5XX/6XX/7XX
+family datasheet (DS60001156) this project already identified
+independently via Main/Panel instruction-level architecture analysis
+(§ early sections) - not a new family guess, a specific member of the
+already-correct family. The "512" in the part number denotes 512KB of
+program flash, which lines up precisely with this project's own
+long-standing, independently-derived fact that the Tempest's decoded
+Main firmware is exactly 524,609 bytes - 321 bytes over 512KB. Two
+separate lines of evidence (a 2014 video caption, and this project's
+own firmware-size arithmetic from unrelated earlier sessions) now
+point at the same specific flash capacity, which is a meaningfully
+stronger convergence than either one alone - though it's worth being
+precise that this is Prophet-12-specific evidence being extended to
+the Tempest via the already-confirmed firmware-platform-sibling
+relationship (§63), not a direct photo of the Tempest's own chip.
+
+**Still a genuine negative for the Tempest and Pro 2 specifically**:
+despite real, broad effort (eBay, Reverb, Gearspace, forums, blogs,
+YouTube), zero candidate exposed-board images were found for either
+product - this video is Prophet-12-specific. Several dead leads were
+chased down and confirmed permanently unrecoverable, worth recording
+so they aren't retried: a pinchplant.com board photo (dead link, zero
+Wayback snapshots) and a Gearslutz-linked tinypic.com image (tinypic
+shut down entirely in 2019, deleting all hosted images).
+
+**Where this leaves things**: this is the strongest lead this
+investigation has had on the chip-identity question, but it is
+explicitly one step short of confirmed - the next move is independent
+corroboration (a second source naming the same part, or a clean enough
+frame/re-edit of the same video to read the physical marking directly)
+before fully trusting it, and even once/if confirmed for Prophet 12,
+treating it as the Tempest's own chip still rests on the inherited
+platform-sharing argument from §63, not a direct observation.
