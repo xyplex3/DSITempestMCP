@@ -7108,3 +7108,95 @@ complete cross-platform count/offset comparison; the loose `0x6d000`-
 5 now-tested products if anyone wants to chase it further. The
 structure's actual identity remains exactly as open as before -
 confirmed ubiquitous, not yet confirmed to be anything specific.
+
+---
+
+## 83. §57's two open loose ends resolved: all 6 binary sub-stretches confirmed as the 28-byte structure, and the coverage matcher fixed with a properly validated (not just raised) improvement (2026-10-19)
+
+Closes both concrete follow-ups §57 explicitly flagged but never
+executed, on the ~45KB OS-1.3 UI-text pool.
+
+**Task B: all 6 of §57's internal binary sub-stretches are confirmed
+instances of the 28-byte structure (§27/§38/§70), not the 20-byte
+one - with the full statistical battery, not a quick guess.** Fragment
+-split the zone using this project's own established convention and
+found exactly 6 long-fragment clusters (matching §57's own "~6"
+count precisely), spanning `0x6c54b`-`0x75354`. Each was tested
+against both known structures:
+
+- The literal 20-byte template (re-derived fresh from 1.3.0's own
+  known-positive site, reproducing §54's documented location exactly)
+  found **zero** hits in any of the 6 clusters.
+- Lag-28 autocorrelation against a 200-trial shuffled control showed
+  8.15x-11.97x elevation in every cluster, with a full lag-1-to-56
+  sweep confirming lag-28 (and its harmonic, lag-56) as the clearly
+  dominant period in each one - structurally ruling out the 20-byte
+  structure, not just failing to match its template.
+- Direct row-reshape inspection shows the two already-documented
+  28-byte sub-variants (a slowly-incrementing counter column in 3
+  clusters, long runs of byte-for-byte identical rows in 2 others),
+  and the established `X`/`X+0x80` tag-byte fingerprint in all 6 (with
+  the specific tag values varying per cluster - the same "same
+  structural signature, different literal payload" pattern §39
+  already established, not a contradiction of it).
+- A content-overlap check against 1.3.0's own other already-
+  documented 28-byte site confirms these are genuinely new sightings
+  (0.00-1.63% byte match, chance level), not a duplicate.
+
+**A surprising 7th finding, previously unconnected**: this same text
+pool ALSO contains the already-known 20-byte-structure's confirmed
+1.3.0 site (§54's `0x72279`-`0x724d1`) - sitting in the gap between
+two of the six clusters, invisible to the long-fragment scan because
+its own internal zero-runs chop it into pieces too short to register
+as a visible "stretch." Whether this co-location is meaningful or
+coincidental is untested - a new, specific open question, not
+previously on record.
+
+**Task A: the matcher's "unflushed-output bug" is fixed, and the
+coverage improvement is properly validated this time, not just
+reported.** Diagnosed as buffered output lost on a slow run hitting
+this environment's execution timeout - fixed with immediate per-
+result flushing and file output. Removing an implicit 150-character
+fragment-length cutoff (confirmed to have existed, since the longest
+non-binary fragment sits exactly at that boundary) let the matcher
+reach the zone's longest fragments for the first time.
+
+**Correctly caught and rejected an inflated raw number before
+reporting anything**: the first full run showed 28.46% coverage, but
+a shuffled-control check on the SAME pipeline showed shuffled data
+also covers ~12% by chance - only 2.35x elevation, not trustworthy.
+Re-ran with this project's own established per-word false-positive-
+rate standard (§46/§50: keep only words scoring ≤0.2 FP-rate across
+10 shuffled trials each) and got a real, validated result: **15.29%
+of the full zone** (22.19% of its non-binary portion) - a genuine
++2.4-percentage-point improvement over §57's own reported 12.9%
+lower bound, using the same denominator for a fair comparison.
+
+**Two newly, cleanly confirmed phrases** (cost=0, zero character
+loss) at the fragment that most directly benefited from the fix:
+`"Unplug all audio cables from Tempest before calibrating"` and
+`"Press 'Soft Key 1' to Calibrate Analog Oscillators and Filters"` -
+this is the exact calibration-submenu text §57 had explicitly
+flagged as "provisional, pending closer byte-level inspection,"
+now properly resolved rather than left as a hand-guess. A separate
+fragment confirms the literal start of the absorbed 454-name preset
+table (`"White Noise"`, `"Pink Noise"` at cost=0), immediately
+preceded by an unconfirmed-but-flagged candidate font/character-code
+index table (an irregular incrementing-with-skips byte pattern) -
+reported as an observation only, not independently verified.
+
+**Two fragments remain honestly unresolved, flagged as speculation
+rather than findings**: hand-reading attempts at two other long
+fragments never reached the matcher's cost≤2 confidence threshold
+against any phrasing tried - best guesses only, explicitly not to be
+treated as confirmed.
+
+**Where this leaves things**: both of §57's loose ends are now
+properly closed, with one new specific open question surfaced (the
+20-byte/28-byte structures' shared presence in this one text pool).
+Concrete next steps if continued: widen the matcher's edit-cost
+budget or try systematic alternative phrasings for the two still-
+unresolved fragments; build a larger 9+-character-only dictionary to
+push validated coverage further without new methodology risk; check
+whether the 20-byte structure's co-location with this text pool is
+load-bearing or coincidental.
