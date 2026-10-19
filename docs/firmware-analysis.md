@@ -6160,3 +6160,77 @@ subject to this kind of search-surface exhaustion.** Further variation
 on text/photo/video search along these same lines is not recommended
 without a genuinely new venue or technique - not more query
 rephrasing.
+
+---
+
+## 70. The 28-byte structure confirmed as a cross-product toolchain artifact (found in Prophet 12 and Pro 2 too); the 20-byte structure appears Tempest-specific, with a methodological caveat (2026-10-18)
+
+A genuinely new angle enabled by this session's own acquisition of
+sibling firmware (§63-§64): testing whether the Tempest's two
+long-unidentified periodic structures also appear in Prophet 12
+Keyboard's or Pro 2's Main firmware, which share the Tempest's exact
+platform.
+
+**28-byte structure (§27/§38/§39): CONFIRMED present in both siblings
+
+- resolves one direction of its long-open identity question.** Found
+via the same lag-28-vs-neighbors autocorrelation test used to
+calibrate against Tempest's own known instances (lag-28 a genuine
+local peak, 0.50-0.92 match rate depending on instance, far above a
+byte-shuffled-control baseline of ~0.032 - the standing methodological
+rule applied correctly). **Prophet 12 has an instance at file offset
+`0x06dfa0` - the EXACT SAME offset as one of Tempest's own instances**
+- plus several more instances elsewhere in the file. Pro 2 has an
+instance at a different offset (`0x040b00`-`0x0412xx`), not at
+`0x06dfa0` (verified directly - ordinary bytes there in Pro 2). Both
+siblings' instances are structurally identical to Tempest's own (same
+28-byte period, same `9d`/`1d`-tag byte shape, a varying small VAL
+field) but not byte-identical (e.g. Prophet 12's tag low-bytes are
+`81`/`01` vs. Tempest's `86`/`06`) - consistent with shared
+build/toolchain mechanics producing the structure, with product-
+specific content/addresses filling it in. **Prophet 12 landing at the
+identical file offset as one of Tempest's own instances, while Pro 2's
+sits elsewhere, is itself informative** - consistent with all three
+sharing enough of a build/link step that some data coincidentally
+lands at the same spot in two of three, while ordinary relinking
+(different code size per product) moves it elsewhere, exactly as this
+kind of platform-sharing would predict. **Conclusion: the 28-byte
+structure is now confirmed to be a cross-product toolchain/build-
+system artifact, not Tempest-specific application data** - still
+doesn't say what it IS, but resolves whose data it is.
+
+**20-byte structure (§51/§54/§55): NOT found in either sibling, under
+the same validated method - but with an honest methodological caveat
+worth flagging before trusting this as a clean negative.** The
+validated lag-20-vs-neighbors scan (same thresholds, calibrated
+against Tempest's own real instances at margin 0.44-0.49) found
+nothing above margin ~0.28 in either sibling, and manual inspection of
+the best candidates in both files showed they were ordinary MIPS code
+(a small unrolled loop), not the target structure. A literal search
+for the structure's `06 9d` tag byte pair found it only 3 times total
+in Pro 2's whole 524,609-byte file (not periodic) and mostly as part
+of unrelated 28-byte-structure content in Prophet 12 - in neither case
+consistent with a real 20-byte-structure instance. **Caveat**: the
+agent running this test could not reproduce this project's own
+previously-documented literal byte template for the 20-byte structure
+exactly as recorded in §51/§54 (`[VAL][06 9d][VAL repeated][06 9d]
+[07 00 00 00]`) - even in Tempest's own file, where the structure is
+already confirmed present. It instead re-derived the phenomenon from
+first principles (autocorrelation + manual inspection) and found
+something at the same period, same key tag bytes, and same general
+file region, which it reasonably treated as the same structure - but
+this means the "not found in siblings" conclusion rests on a
+re-derived rather than exactly-reproduced template, and should be
+treated as provisional until a future pass re-derives the exact
+template from the original §51/§54 log text and re-confirms the
+negative against it specifically.
+
+**Where this leaves things**: a genuine, informative asymmetry - one
+structure (28-byte) is now confirmed shared/toolchain-level, the other
+(20-byte) appears to be Tempest-specific, which is itself a
+meaningful, non-forced result rather than the two structures turning
+out to be the same kind of thing. If continued: re-verify the 20-byte
+negative against the exact original template before treating it as
+settled; if it holds, that would make the 20-byte structure a
+genuinely Tempest-specific open question worth more attention than the
+now-explained 28-byte one.
