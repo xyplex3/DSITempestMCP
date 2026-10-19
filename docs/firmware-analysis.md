@@ -6509,3 +6509,81 @@ confirmed new only at OS 1.5.0.2 and not explained by any official
 documentation (§73) - this section explains WHAT the string means,
 not WHY the firmware's specific storage mechanism for it changed at
 that version.
+
+---
+
+## 75. The firmware's "Basic" block sits in a newly-added UI widget-descriptor table - but this creates a genuine, unresolved tension with §74's hardware-data conclusion, not a confirming match (2026-10-18)
+
+A parallel investigation (launched before §74's direct hardware-data
+check completed) into the same question - what the firmware-side
+"Basic" block is for - found real, valuable new structural detail,
+but its own inferential conclusion conflicts with §74's more direct
+evidence. Both are reported honestly below rather than silently
+picking a winner.
+
+**Genuinely new structural finding, confirmed and valuable regardless
+of the naming question**: the "Basic" name-field block in 1.5.0.2
+(`0x741f2`-`0x743bd`) is not an isolated construction - it sits inside
+a larger table of heterogeneous UI widget-type descriptors (decoded
+as 5 little-endian uint32s per 20-byte record: `ptrA, ptrB, type,
+max, val`), immediately before a short tail both 1.5.0.2 and 1.4
+share record-for-record, down to pointer deltas and a literal
+end-marker (`51 00 32 00`) appearing identically in both files.
+**Everything before that shared tail in 1.5.0.2 - several widget-type
+records (`type=1/max=1`, `type=4/max=1`, `type=5/max=0x1f`,
+`type=2/max=3` ×2) plus the entire 23-record "Basic" name field - is
+confirmed completely absent from 1.4**, not merely moved: the specific
+`type=4`/`type=5` byte patterns occur zero times anywhere in the full
+1.4 image, and `type=2/max=3` occurs once, far away and unrelated.
+`type=7`/`max=0x7f` is unambiguously a single-ASCII-character-entry
+widget (0-127 range), confirming the name field's mechanism directly
+from its own surrounding structure, independent of the cross-product
+comparison approach. **Conclusion, confirmed**: OS 1.5.0.2 added a
+genuinely new UI-field-group (several widget descriptors plus one
+20-character name-entry field) to this table, not just a relinked
+copy of something older.
+
+**The agent's own inferential conclusion about WHAT this specific
+name field defaults for - "most plausibly a default Sound name" -
+conflicts with §74's direct hardware-data finding and should not be
+treated as settled.** Its reasoning: this table sits adjacent to the
+factory sound-name list (not the Beat-name region) in both versions,
+has only ONE name field (whereas the manual's "Rename Beat" procedure
+edits TWO fields - long name + short name - while "Rename Sound" and
+"Rename Beat" each edit only one), and the manual shows a real Sound
+named "Basic" at slot B1. This is a reasonable inference chain, but it
+is positional/structural reasoning plus a manual screenshot - a weaker
+evidentiary tier than §74's direct read of real, hardware-captured
+Beat/Project SysEx data via this project's own validated decoder,
+which placed "Basic" at exactly `KitShortNameOffset` (the Beat SHORT
+name field) in 6/6 real Beat captures, and confirmed it completely
+absent from every Sound capture checked. **These two results do not
+have to be contradictory** - it's entirely possible this specific
+*firmware* table (new in 1.5.0.2) is a Sound-related default-
+initialization construction, while the *separate* real-world Beat-
+short-name default mechanism §74 found lives somewhere else in the
+firmware, not yet located - the two "Basic" sightings would then be
+unrelated coincidences of the same convenient placeholder word, not
+the same mechanism. This is flagged as a genuine open reconciliation
+question, not resolved here.
+
+**One useful cross-check already run**: the manual's actual character-
+by-character "Select Char"/"Edit Char" rename mechanism (used for
+Sound, Beat, and Project renaming alike) directly explains, at the
+functional level, why firmware name defaults would be encoded as one
+char-widget record per character rather than a flat string - this
+part of the reasoning is solid regardless of which specific name field
+this particular table turns out to be.
+
+**Where this leaves things**: real progress on the table's surrounding
+structure (now characterized, not just the one string), but the
+"Sound vs. Beat" question for THIS SPECIFIC firmware block is open
+and should be treated as less certain than §74's own hardware-
+confirmed Beat-short-name-default finding, which stands as this
+project's most directly-evidenced fact about "Basic" to date.
+Concrete next steps if continued: check whether this table's position
+is closer to firmware text already identified (§46) as mentioning an
+"Init Sound template" / "export Init Sound template over MIDI" (not
+cross-checked this session); apply the same widget-record decode to
+the 1.3.0/1.3.0.6 sites from §54 to see if a partial name field
+narrows down exactly when this UI feature was first added.
