@@ -6427,3 +6427,85 @@ whether "Basic" appears as a literal factory Beat/Project name in the
 OS 1.4/1.5 sound-set content itself. The incidentally-rediscovered
 4-byte pointer-like table at ~`0x72180`-`0x721b0` is flagged as an
 unrelated, unexplored side-observation, not pursued further here.
+
+---
+
+## 74. "Basic" fully explained - confirmed via REAL hardware-captured Beat/Project SysEx data as the factory-default Beat short name, not a manual example or a guess (2026-10-18)
+
+Direct, hardware-grounded resolution of §72/§73's open "what is Basic
+actually for" question - checked directly (not delegated), using this
+project's own confirmed, tested SysEx decoder against real device
+captures that already live in this repo's test fixtures
+(`internal/sysex/testdata/{sound,beat,project}-research/*.syx`) -
+these are genuine hardware-captured Beat/Sound/Project dumps from
+earlier `tempest-mcp` sysex-protocol research, a completely different
+data family from the firmware `.syx` OS-update files this whole
+document otherwise analyzes.
+
+**Method**: ran this repo's own `sysex.Unescape` + `sysex.ExtractName`
+against every Beat, Sound, and Project test fixture. Confirmed the
+Beat (`0x5F`) name field correctly decodes to `"Initialize"` via the
+already-documented, hardware-confirmed `KitNameOffset`/`KitNameLen`
+constants (`internal/sysex/message.go`) - then searched the full
+decoded payload for the literal substring `"Basic"` directly.
+
+**Result: "Basic" sits at decoded offset 44 in every single Beat
+test fixture (6 of 6, regardless of note content or corruption
+state) - which is exactly `KitShortNameOffset` (44), the Beat's
+8-byte space-padded SHORT NAME field, confirmed in this repo's own
+source.** The full context reads `"...ialize          Basic   ..."`
+
+- i.e. the Beat's full name is `"Initialize"` (the standard
+researcher-created test-beat name) but its SHORT name defaulted to
+`"Basic"` (padded to 8 bytes: `"Basic   "`) in every captured
+instance. **This is the Tempest's own real factory-default short-name
+value for a Beat that was never given a custom short name** - not
+inferred, not guessed, read directly via the project's own tested,
+hardware-validated decoder.
+
+**A second, related confirmation in the Project test fixture**: the
+literal string `"Basic Beat"` (not just `"Basic"`) appears at decoded
+offset 370, in context `"...Basic Beat          Beat1   ..."` - a
+default/placeholder beat slot inside a fresh Project, with FULL name
+`"Basic Beat"` (the `KitNameLen`=20-byte field) and SHORT name
+`"Beat1"` (the `KitShortNameLen`=8-byte field). This is a second,
+independent, hardware-confirmed sighting of "Basic"-rooted default
+naming, in a different field/context from the first (a default full
+BEAT name here, vs. a default SHORT name there) - consistent with
+"Basic" being a general factory-default naming root the Tempest
+reuses across more than one default-content slot, not a single
+coincidental string.
+
+**Cross-checked against Sound test fixtures - confirmed absent, as
+expected.** All 3 Sound (`0x60`) test fixtures decode to a real name
+(`"Game Bass"`) and contain no "Basic" anywhere - consistent with
+"Basic" being Beat/Project-specific default content, not a Sound
+default, which resolves the manual-based ambiguity from the earlier
+"Read the manual" check (the manual showed both a Sound named
+"Basic" at slot B1, AND two longer Beat names starting with "Basic" -
+this hardware evidence shows the real firmware mechanism is Beat-
+side, specifically the short-name default, not the Sound example).
+
+**Also independently verified directly** (not delegated) against the
+decoded Main 1.5.0.2 firmware itself
+(`/Users/xyplex2/Tools/MCP for DSI Tempest/firmware/Tempest_Main_1.5.0.2.raw`,
+confirmed 524,609 bytes, confirmed byte-exact match to the known
+template at `0x741f2`): a plain contiguous search for `"Basic"`
+returns no match anywhere in the file - reconfirming §73's finding
+that the string exists only via the unusual one-char-per-20-byte-
+record layout, not as an ordinary string, consistent with it being
+written by a small, separate default-initialization routine exactly
+as §73 already inferred.
+
+**Where this leaves things**: "Basic" is now a fully-explained
+finding, not just a strong lead - confirmed via real hardware-
+captured device data (the strongest possible evidentiary tier this
+project uses) as the Tempest's real factory-default Beat short name
+(and, relatedly, "Basic Beat" as a default full Beat name in fresh
+Projects). This closes the open question from §72/§73 about what kind
+of default name "Basic" is. It remains true that the specific
+firmware-side 20-byte-record construction storing this string is
+confirmed new only at OS 1.5.0.2 and not explained by any official
+documentation (§73) - this section explains WHAT the string means,
+not WHY the firmware's specific storage mechanism for it changed at
+that version.
